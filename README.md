@@ -2,8 +2,9 @@
 
 This fork of [WiiCompiled](https://github.com/patchzyy/Wiicompiled) runs the PAL GameCube release of Final Fantasy Crystal Chronicles (`GCCP01`),
 including its multiplayer mode: every player's Game Boy Advance is an emulated handheld running the
-game's own client program, drawn in the corners of the screen, with up to four players and two of
-them on one keyboard. You need your own dumped disc; nothing from the game ships here. See
+game's own client program, drawn in the corners of the screen. Up to four players; each port takes its gamepad, and ports
+without one can be driven from the keyboard with per-port bindings (defaults for two extra
+players included, all remappable in the F10 settings bar). You need your own dumped disc; nothing from the game ships here. See
 [`docs/ffcc.md`](docs/ffcc.md) for the build, configuration and controls.
 
 | Character creation on the clients | Dungeon start: command list and hub menu |

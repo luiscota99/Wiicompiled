@@ -139,14 +139,34 @@ flag:
 - Generic SDK changes made for the GameCube (OS, GX, audio, DVD, VI) are guarded by the project flag
   where they differ from the Wii behaviour, so the Mario Kart build is unchanged.
 
-## Playing multiplayer
+## Players and controls
 
-- Every player is on a GBA client. A player's gamepad drives both the game (in the field) and the
-  client's screen (when open). Select gives the client control; on the client, B opens its menu.
-  The command list must be confirmed by every player when a dungeon starts.
-- Ports 3 and 4 without a gamepad use the keyboard. Port 3: WASD to move, J = A, K = B,
-  U = Select, I = Start, Q/E = L/R. Port 4: arrow keys, numpad 1 = A, 2 = B, 3 = Select,
-  0 = Start, 7/9 = L/R.
+The number of players is `[gba] players` in `Config.toml` (1 to 4). Ports 1..n each run an emulated
+handheld client; the game itself decides what each player can do, exactly as with real handhelds.
+
+**Which input drives which port.** Gamepads are assigned to ports in the order they are connected
+(port 1 first). A port without a gamepad reads the keyboard through that port's own keyboard
+bindings. Every binding is remappable: press **F10** in the game window, open **Controller settings**,
+pick the port, and press the key you want for each button. Bindings are saved in
+`UserData/keyboard_bindings.dat` next to the executable (portable layout) and survive updates.
+
+Defaults when nothing has been remapped:
+
+| Port | Move | A | B | Select | Start | L / R |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 (no gamepad) | WASD, arrows = stick | X | Z | Space | Enter | Q / E |
+| 3 (no gamepad) | WASD | J | K | U | I | Q / E |
+| 4 (no gamepad) | arrow keys | numpad 1 | numpad 2 | numpad 3 | numpad 0 | numpad 7 / 9 |
+
+Port 2 has no keyboard default (it is expected to have a gamepad); give it one in the F10 bar if you
+need it. On a gamepad the client's buttons are A/B, Back = Select, Start, the d-pad or left stick,
+and the shoulder buttons for L/R. The GameCube-style X/Y/Z mappings exist for the port's pad but the
+handheld protocol only carries the GBA buttons.
+
+**In play.** A player's controls drive the game in the field and the client's screen when it is open.
+Select gives the client control; on the client, B opens its hub menu. At a dungeon start every player
+confirms their command list on the client to release the prompt. Pausing shows the client's PAUSE
+card, as on hardware.
 
 ## How the handheld link works here
 
