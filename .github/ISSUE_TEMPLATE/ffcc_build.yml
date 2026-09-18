@@ -1,0 +1,17 @@
+name: FFCC port build or setup problem
+description: The quick start did not get you to a running game
+title: "[ffcc build] "
+labels: ["ffcc", "build"]
+body:
+  - type: input
+    id: step
+    attributes: { label: Which quick-start step failed }
+    validations: { required: true }
+  - type: input
+    id: tools
+    attributes: { label: Tool versions, placeholder: ".NET SDK, CMake, Ninja, LLVM-MinGW, Python, Windows SDK" }
+    validations: { required: true }
+  - type: textarea
+    id: output
+    attributes: { label: Command and full output, render: text }
+    validations: { required: true }

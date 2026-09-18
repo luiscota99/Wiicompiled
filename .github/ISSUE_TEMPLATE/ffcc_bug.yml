@@ -1,0 +1,26 @@
+name: FFCC port bug
+description: Something wrong in the Final Fantasy Crystal Chronicles port (ffcc-port branch)
+title: "[ffcc] "
+labels: ["ffcc", "bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not attach game data (DOL, disc files, saves). Logs and link traces are fine."
+  - type: input
+    id: commit
+    attributes: { label: Commit built, placeholder: "git rev-parse --short HEAD" }
+    validations: { required: true }
+  - type: input
+    id: machine
+    attributes: { label: OS, GPU and driver, placeholder: "Windows 11, RTX 3060 566.xx" }
+    validations: { required: true }
+  - type: input
+    id: players
+    attributes: { label: Players and controllers, placeholder: "2 players: Xbox pad on port 1, keyboard set on port 3" }
+  - type: textarea
+    id: steps
+    attributes: { label: What you did and what happened, description: "Scene, actions, expected vs actual." }
+    validations: { required: true }
+  - type: textarea
+    id: log
+    attributes: { label: Runtime log, description: "build-ffcc/UserData/Logs or the console output. For link problems attach a WIICOMPILED_GBA_TRACE recording; for rendering problems a Dolphin capture of the same scene.", render: text }
