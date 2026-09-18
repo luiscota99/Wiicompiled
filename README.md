@@ -1,6 +1,31 @@
+# Final Fantasy Crystal Chronicles (GameCube, PAL) on WiiCompiled
+
+This fork of [WiiCompiled](https://github.com/patchzyy/Wiicompiled) runs the PAL GameCube release of Final Fantasy Crystal Chronicles (`GCCP01`),
+including its multiplayer mode: every player's Game Boy Advance is an emulated handheld running the
+game's own client program, drawn in the corners of the screen, with up to four players and two of
+them on one keyboard. You need your own dumped disc; nothing from the game ships here. See
+[`docs/ffcc.md`](docs/ffcc.md) for the build, configuration and controls.
+
+| Character creation on the clients | Dungeon start: command list and hub menu |
+| --- | --- |
+| ![creation](docs/media/ffcc_creation.jpg) | ![dungeon](docs/media/ffcc_dungeon_prompt.jpg) |
+| ![hub menu](docs/media/ffcc_hub_menu.jpg) | ![combat](docs/media/ffcc_combat.jpg) |
+
+![creation clip](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation_small.gif)
+
+![dungeon clip](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus_small.gif)
+
+Full videos: [character creation](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation.mp4) and
+[dungeon start, menus and combat](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus.mp4).
+
+Everything below this line is the upstream WiiCompiled README (Mario Kart Wii), which this fork
+builds on and keeps intact; its build instructions, FAQ and licence apply here too.
+
+---
+
 <img width="4190" height="1232" alt="wiicomplogofinalfinalfinalev2MADEBY_INKWRECK_plzcredit" src="https://github.com/user-attachments/assets/df7a3f2e-5336-479a-b4c0-968dd578726d" />
 
-# WiiCompiled
+## WiiCompiled (upstream)
 
 <p align="center">
   <a href="https://github.com/patchzyy/Wiicompiled/releases"><img alt="Windows 10 / 11, x64" src="https://img.shields.io/badge/Windows-10%20%2F%2011%20%C2%B7%20x64-0078D4"></a>
@@ -130,26 +155,6 @@ WiiCompiled, Wheel Wizard, Retro rewind and other related projects are developed
 **independently** and each has its **own** contribution rules and all have their own
 rules. What applies here does not automatically apply there,
 and vice versa. Check each project's own CONTRIBUTING and README files.
-
-## Final Fantasy Crystal Chronicles (GameCube, PAL)
-
-This fork also runs the PAL GameCube release of Final Fantasy Crystal Chronicles (`GCCP01`),
-including its multiplayer mode: every player's Game Boy Advance is an emulated handheld running the
-game's own client program, drawn in the corners of the screen, with up to four players and two of
-them on one keyboard. You need your own dumped disc; nothing from the game ships here. See
-[`docs/ffcc.md`](docs/ffcc.md) for the build, configuration and controls.
-
-| Character creation on the clients | Dungeon start: command list and hub menu |
-| --- | --- |
-| ![creation](docs/media/ffcc_creation.jpg) | ![dungeon](docs/media/ffcc_dungeon_prompt.jpg) |
-| ![hub menu](docs/media/ffcc_hub_menu.jpg) | ![combat](docs/media/ffcc_combat.jpg) |
-
-![creation clip](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation_small.gif)
-
-![dungeon clip](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus_small.gif)
-
-Full videos: [character creation](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation.mp4) and
-[dungeon start, menus and combat](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus.mp4).
 
 ## Retro Rewind
 
