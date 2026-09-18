@@ -4,6 +4,7 @@
 // Hot accessors stay header-inline because the shipped build links runtime shards without LTO.
 
 #include "isa/big_endian.h"
+#include "../project_guest_addresses.h"
 #include "memory.h"
 
 #include <algorithm>
@@ -30,22 +31,29 @@ constexpr uint32_t kMailNewUCode = kTaskMailToDsp | 0x0001u;
 constexpr uint32_t kMailReset = kTaskMailToDsp | 0x0002u;
 constexpr size_t kResamplingCoefficientCount = 0x800;
 constexpr uint32_t kMailContinue = kTaskMailToDsp | 0x0003u;
+#if defined(RECOMP_PROJECT_FFCC)
+// GameCube AX runs 5 ms frames at 32 kHz; the Wii ucode this mixer was written for runs 3 ms.
+// With 96 the mixer produced only 60 percent of the samples the game expects, so the audio
+// backend starved and playback was uneven.
+constexpr uint32_t kAxSamplesPerFrame = 160u;
+#else
 constexpr uint32_t kAxSamplesPerFrame = 96u;
-constexpr uint32_t kAxDspTaskAddr = 0x802F81A0u;
-constexpr uint32_t kDspInitializedAddr = 0x80386608u;
-constexpr uint32_t kDspAssertPendingAddr = 0x80386610u;
-constexpr uint32_t kDspAssertTaskAddr = 0x80386614u;
-constexpr uint32_t kDspCurrentTaskAddr = 0x8038661Cu;
-constexpr uint32_t kDspFirstTaskAddr = 0x80386620u;
-constexpr uint32_t kDspRunningTaskAddr = 0x80386624u;
-constexpr uint32_t kAxIramMmemAddr = 0x8027F820u;
-constexpr uint32_t kAxDramMmemAddr = 0x802F8200u;
+#endif
+constexpr uint32_t kAxDspTaskAddr = GuestAddr::AxDspTask;
+constexpr uint32_t kDspInitializedAddr = GuestAddr::DspInitialized;
+constexpr uint32_t kDspAssertPendingAddr = GuestAddr::DspAssertPending;
+constexpr uint32_t kDspAssertTaskAddr = GuestAddr::DspAssertTask;
+constexpr uint32_t kDspCurrentTaskAddr = GuestAddr::DspCurrentTask;
+constexpr uint32_t kDspFirstTaskAddr = GuestAddr::DspFirstTask;
+constexpr uint32_t kDspRunningTaskAddr = GuestAddr::DspRunningTask;
+constexpr uint32_t kAxIramMmemAddr = GuestAddr::AxIramMmem;
+constexpr uint32_t kAxDramMmemAddr = GuestAddr::AxDramMmem;
 constexpr uint32_t kAxDramLength = 64u;
 constexpr uint32_t kAxDramDspAddr = 3282u;
-constexpr uint32_t kAxInitCallback = 0x80126948u;
-constexpr uint32_t kAxResumeCallback = 0x80126954u;
-constexpr uint32_t kAxDoneCallback = 0x801269A8u;
-constexpr uint32_t kAxRequestCallback = 0x801269B8u;
+constexpr uint32_t kAxInitCallback = GuestAddr::AxInitCallback;
+constexpr uint32_t kAxResumeCallback = GuestAddr::AxResumeCallback;
+constexpr uint32_t kAxDoneCallback = GuestAddr::AxDoneCallback;
+constexpr uint32_t kAxRequestCallback = GuestAddr::AxRequestCallback;
 
 extern uint32_t g_axTaskPtr;
 
@@ -293,8 +301,13 @@ struct PBDpopWii {
     int16_t auxC_surround;
 };
 
+// GameCube AX runs 5 ms frames and the parameter block carries one update count per millisecond
+// (AXPBUPDATE::updNum[5] in the SDK header). The Wii ucode this was written for uses 3 ms and simply
+// leaves the last two counts zero.
+constexpr uint32_t kAxUpdateMillisecondsMax = 5u;
+
 struct PBUpdatesWii {
-    uint16_t num_updates[3];
+    uint16_t num_updates[kAxUpdateMillisecondsMax];
     uint16_t data_hi;
     uint16_t data_lo;
 };
@@ -507,6 +520,12 @@ inline bool UCodeUsesNewFilter(uint32_t crc) {
 }
 
 inline AXCommandLayout CommandLayoutForUCode(uint32_t crc) {
+    // FFCC's GameCube AX ucode. Measured: of the three candidate encodings only New parses its live
+    // command list, so New is right by evidence rather than by the fallback at the bottom of this
+    // function happening to be correct. Named here so the choice is deliberate and greppable.
+    if (crc == 0x07f88145u) {
+        return AXCommandLayout::New;
+    }
     if (UCodeUsesOldAxWiiCommands(crc)) {
         return AXCommandLayout::Old;
     }
@@ -520,6 +539,9 @@ void WriteGuestS32Buffer(uint32_t addr, const int* src, size_t count);
 
 void ReadGuestS32Buffer(uint32_t addr, int* dst, size_t count);
 
+#if defined(RECOMP_PROJECT_FFCC)
+uint8_t ReadAramByteGameCube(uint32_t addr, uint16_t is_stream);  // ax_gamecube.cpp
+#endif
 class Accelerator {
 public:
     void Setup(AXPBWii* pb) {
@@ -581,6 +603,11 @@ public:
             if (decode != 1) {
                 ++m_current;
             }
+#if defined(RECOMP_PROJECT_FFCC)
+            else {
+                m_current += 2;
+            }
+#endif
         }
 
         if (m_current == m_end + step - 1) {
@@ -611,7 +638,16 @@ public:
         return value;
     }
 
-    static uint8_t ReadAram8(uint32_t addr) {
+    uint8_t ReadAram8(uint32_t addr) const {
+#if defined(RECOMP_PROJECT_FFCC)
+        // GameCube: PB field 0x10 is AXPB::type. Type 0 plays from ARAM (the ffcc_aram.cpp buffer);
+        // type 1 is a streaming voice whose samples live in main memory, which the game refills.
+        // ReadAramByteGameCube already handles both, but this only ever asked it about type 0, so
+        // streaming voices fell through to the Wii reader and its MEM1/MEM2 alias logic instead.
+        // Measured consequence: the two streaming voices in the opening decoded to full scale and
+        // summed to exactly twice the mix volume, saturating the output.
+        if (m_pb) return ReadAramByteGameCube(addr, m_pb->is_stream);
+#endif
         return ReadAramByte(addr);
     }
 

@@ -2350,7 +2350,16 @@ bool handle_aurora(const u8* data, u32& pos, u32 size, bool bigEndian) {
 
     auto& array = g_gxState.arrays[attrIdx];
     const auto newData = reinterpret_cast<void*>(arrayAddr);
+#if defined(RECOMP_PROJECT_FFCC)
+    // FFCC publishes a per-draw span for the same base array; a cached upload that already covers the
+    // requested span stays valid (thousands of 0x60-byte mesh lists per frame re-uploaded a 220 KB
+    // array each and overflowed the storage slice). CP_CMD_INVAL_VTX still drops the cache.
+    const bool sameBacking = array.data == newData && array.le == le && array.cachedRange.size > 0 &&
+                             arraySize <= array.size;
+    if (!sameBacking && (array.data != newData || array.size != arraySize || array.le != le)) {
+#else
     if (array.data != newData || array.size != arraySize || array.le != le) {
+#endif
       array.data = newData;
       array.size = arraySize;
       array.le = le;

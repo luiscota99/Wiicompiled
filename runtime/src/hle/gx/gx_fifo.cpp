@@ -41,9 +41,17 @@ static void ApplyAuroraVtxStateForRawBegin(GXVtxFmt fmt) {
     // publishes GX_VA_NBT after GX_VA_NRM, which makes aurora's SETVAT fall-through clobber the
     // NRM VAT with the default. Raw-FIFO geometry renders correctly with it; do not "fix" without
     // an in-race A/B run.
+#if defined(RECOMP_PROJECT_FFCC)
+    // FFCC: the game never sets GX_VA_NBT; publishing the slot's default (cnt 1 = NBT) after GX_VA_NRM
+    // flips VAT_A to NBT and every raw-FIFO draw with XYZ normals (24-byte vertices) is decoded as 48.
+    PublishAuroraVtxState(fmt, AuroraVtxPublishOptions{/*includeNbt=*/false,
+                                                       /*fmtLoopFirst=*/0,
+                                                       /*fmtLoopLast=*/25});
+#else
     PublishAuroraVtxState(fmt, AuroraVtxPublishOptions{/*includeNbt=*/true,
                                                        /*fmtLoopFirst=*/0,
                                                        /*fmtLoopLast=*/25});
+#endif
 }
 
 // There is deliberately no indexed-aurora path here. Immediate-mode indexed

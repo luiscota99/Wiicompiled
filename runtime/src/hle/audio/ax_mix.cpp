@@ -1,6 +1,15 @@
 #include "ax_dsp.h"
 
 #include "ax_internal.h"
+#if defined(RECOMP_PROJECT_FFCC)
+namespace AxDspHle {
+void ReadPBGameCube(uint32_t addr, AXPBWii& pb);
+void WritePBGameCube(uint32_t addr, const AXPBWii& pb);
+AXMixControl ConvertMixerControlGameCube(uint16_t mixerControl);
+void TranslateCommandListGameCube(uint32_t addr, uint32_t sizeWords, uint16_t* outList, size_t maxWords, uint32_t* outSizeWords);
+uint8_t ReadAramByteGameCube(uint32_t addr, uint16_t is_stream);
+}
+#endif
 
 #include "abi_bridge.h"
 #include "audio_backend.h"
@@ -53,6 +62,37 @@ std::filesystem::path FindDspCoefficientRom() {
 
     throw std::runtime_error("Missing bundled Wii DSP coefficient ROM (dsp_coef.bin)");
 }
+
+
+#if defined(RECOMP_PROJECT_FFCC)
+// Objective audio capture: WIICOMPILED_AUDIO_DUMP=<file.wav> writes the final mixed stereo output so
+// it can be compared numerically against a reference recording of the same scene.
+namespace FfccAudioDump {
+inline std::FILE* File() {
+    static std::FILE* f = [] () -> std::FILE* {
+        const char* path = std::getenv("WIICOMPILED_AUDIO_DUMP");
+        if (!path) return nullptr;
+        std::FILE* out = std::fopen(path, "wb");
+        if (!out) return nullptr;
+        unsigned char hdr[44] = {};
+        std::memcpy(hdr, "RIFF", 4); std::memcpy(hdr + 8, "WAVEfmt ", 8);
+        hdr[16] = 16; hdr[20] = 1; hdr[22] = 2;              // PCM, stereo
+        const unsigned rate = 32000, bps = rate * 2 * 2;
+        std::memcpy(hdr + 24, &rate, 4); std::memcpy(hdr + 28, &bps, 4);
+        hdr[32] = 4; hdr[34] = 16; std::memcpy(hdr + 36, "data", 4);
+        std::fwrite(hdr, 1, sizeof(hdr), out);
+        return out;
+    }();
+    return f;
+}
+inline void Write(const int16_t* pcm, size_t count) {
+    std::FILE* f = File();
+    if (!f) return;
+    std::fwrite(pcm, sizeof(int16_t), count, f);
+    std::fflush(f);
+}
+}  // namespace FfccAudioDump
+#endif
 
 class AXWii {
 public:
@@ -302,6 +342,12 @@ private:
     }
 
     void CopyCmdList(uint32_t addr, uint32_t sizeWords) {
+#if defined(RECOMP_PROJECT_FFCC)
+        uint32_t translatedSize = 0;
+        TranslateCommandListGameCube(addr, sizeWords, m_cmdList.data(), m_cmdList.size(), &translatedSize);
+        m_cmdListSize = translatedSize;
+        m_commandLayout = AXCommandLayout::New;
+#else
         if (sizeWords > m_cmdList.size()) {
             // Truncating a command list drops whole commands
             if (!m_loggedCmdListTruncated.exchange(true, std::memory_order_relaxed)) {
@@ -315,6 +361,7 @@ private:
         for (uint32_t i = 0; i < sizeWords; ++i) {
             m_cmdList[i] = Memory::Read16(addr + i * 2);
         }
+#endif
     }
 
     // Everything that must be observed at mail time happens here, before the mix leaves the
@@ -331,6 +378,26 @@ private:
                       (validOld ? AXCommandLayout::Old : AXCommandLayout::New));
         }
 
+#if defined(RECOMP_PROJECT_FFCC)
+        {
+            static bool s_reported = false;
+            if (!s_reported) {
+                s_reported = true;
+                const char* name = layout == AXCommandLayout::Old ? "Old"
+                                 : layout == AXCommandLayout::NewNoOutputVolume ? "NewNoOutputVolume"
+                                 : layout == AXCommandLayout::New ? "New" : "Auto";
+                std::fprintf(stderr,
+                             "[audio] ax layout: using %s ucodeCrc=0x%08x parses{new=%d newNoVol=%d old=%d} "
+                             "stashedPb=%d outputHasVolume=%d%c",
+                             name, m_ucodeCrc,
+                             ScanCommandList(AXCommandLayout::New, nullptr) ? 1 : 0,
+                             ScanCommandList(AXCommandLayout::NewNoOutputVolume, nullptr) ? 1 : 0,
+                             ScanCommandList(AXCommandLayout::Old, nullptr) ? 1 : 0,
+                             UsesStashedPbAddress(layout) ? 1 : 0,
+                             OutputCarriesVolume(layout) ? 1 : 0, 10);
+            }
+        }
+#endif
         CommandListScan scan{};
         ScanCommandList(layout, &scan);
         for (uint32_t i = 0; i < scan.outputCommands; ++i) {
@@ -574,11 +641,31 @@ private:
 
     void SetupProcessing(uint32_t initAddr) {
         const AXBuffers buffers = MixBuffers();
+
+        // How many {startHi, startLo, delta} records the SETUP address actually points at. The Wii
+        // mixer has twenty buses; the GameCube studio structure (AXSPB in the SDK header) describes
+        // nine and ends at offset 0x36: main L/R/S, auxA L/R/S, auxB L/R/S. There is no auxC and
+        // there are no Wii remote buses. Reading all twenty walked 66 bytes off the end and filled
+        // the remaining buses with ramps built from unrelated memory, which auxC then mixed into the
+        // main output -- a constant, frame-identical spike far past the 16-bit range.
+#if defined(RECOMP_PROJECT_FFCC)
+        constexpr size_t kStudioBusRecords = 9;
+#else
+        const size_t kStudioBusRecords = buffers.size();
+#endif
+
         for (size_t i = 0; i < buffers.size(); ++i) {
+            const int count = (i < kAxRegularBusCount ? kAxSamplesPerFrame : kAxWiimoteSamplesPerFrame);
+
+            if (i >= kStudioBusRecords) {
+                // Not described by this platform's studio structure: silence it rather than invent it.
+                std::fill(buffers[i], buffers[i] + count, 0);
+                continue;
+            }
+
             const uint32_t value = (MixRead16(initAddr + static_cast<uint32_t>(i * 6)) << 16) |
                                    MixRead16(initAddr + static_cast<uint32_t>(i * 6 + 2));
             const int16_t delta = static_cast<int16_t>(MixRead16(initAddr + static_cast<uint32_t>(i * 6 + 4)));
-            const int count = (i < kAxRegularBusCount ? 32 : 6) * 3;
             if (value == 0) {
                 std::fill(buffers[i], buffers[i] + count, 0);
             } else {
@@ -645,15 +732,66 @@ private:
     }
 
     void ProcessPBList(uint32_t pbAddr, bool newFilter, bool oldAxLayout) {
+        ++m_processCallsThisFrame;  // diagnostic: is the voice list walked more than once per frame?
         uint32_t guard = 0;
         while (pbAddr && guard++ < 256) {
             AXPBWii pb{};
+            AXMixControl control = MIX_MAIN_L;
+#if defined(RECOMP_PROJECT_FFCC)
+            ReadPBGameCube(pbAddr, pb);
+#if defined(RECOMP_PROJECT_FFCC)
+            // Raw guest halfwords straight out of the parameter block, beside what the reader made of
+            // them. Every field has now been verified against the SDK header one at a time and they
+            // all pass, yet the output is provably wrong, so the remaining suspect is the read itself
+            // (offset, aliasing or byte order). This shows both at once.
+            if (pb.running == 1) {
+                static unsigned s_dump = 0;
+                if (s_dump < 4u) {
+                    ++s_dump;
+                    std::fprintf(stderr, "[audio] pb raw @0x%08x:%c", pbAddr, 10);
+                    for (uint32_t base = 0x00; base < 0x40; base += 0x10) {
+                        std::fprintf(stderr, "[audio]   +%02x:", base);
+                        for (uint32_t o = 0; o < 0x10; o += 2) {
+                            std::fprintf(stderr, " %04x", MixRead16(pbAddr + base + o));
+                        }
+                        std::fprintf(stderr, "%c", 10);
+                    }
+                    std::fprintf(stderr,
+                        "[audio]   reader: vL 0x%04x dL 0x%04x vR 0x%04x dR 0x%04x ctrl 0x%04x state %u%c",
+                        pb.mixer.main_left.volume, pb.mixer.main_left.volume_delta,
+                        pb.mixer.main_right.volume, pb.mixer.main_right.volume_delta,
+                        pb.mixer_control_lo, pb.running, 10);
+                }
+            }
+#endif
+            control = ConvertMixerControlGameCube(pb.mixer_control_lo);
+#else
             ReadPB(pbAddr, pb);
+            control = ConvertMixerControl(Hilo(pb.mixer_control_hi, pb.mixer_control_lo));
+#endif
+#if defined(RECOMP_PROJECT_FFCC)
+            // Histogram of the voice state field across the whole chain. We only mix state == 1, so
+            // if the chain is full of voices in some OTHER non-zero state we are silently skipping
+            // them, and whatever stereo they carry never reaches the mix.
+            {
+                const unsigned st = pb.running < 7u ? pb.running : 7u;
+                ++AxStateHist()[st];
+            }
+#endif
             AXBuffers buffers = MixBuffers();
-            const AXMixControl control = ConvertMixerControl(Hilo(pb.mixer_control_hi, pb.mixer_control_lo));
-            if (oldAxLayout && (pb.updates.num_updates[0] | pb.updates.num_updates[1] | pb.updates.num_updates[2]) != 0) {
+            // One update slot per millisecond, and a millisecond is 32 samples at 32 kHz, so the
+            // number of slots is the frame length over 32: five on GameCube, three on the Wii.
+            // Hardcoding three here mixed only 96 of the 160 samples in an FFCC frame and left the
+            // rest of every frame stale, which is what made cutscene audio clip.
+            constexpr uint32_t kUpdateMs = kAxSamplesPerFrame / 32u;
+            static_assert(kUpdateMs <= kAxUpdateMillisecondsMax, "update slots exceed the array");
+            uint16_t anyUpdates = 0;
+            for (uint32_t i = 0; i < kUpdateMs; ++i) {
+                anyUpdates |= pb.updates.num_updates[i];
+            }
+            if (oldAxLayout && anyUpdates != 0) {
                 const auto updates = LoadPBUpdates(pb);
-                for (uint32_t ms = 0; ms < 3; ++ms) {
+                for (uint32_t ms = 0; ms < kUpdateMs; ++ms) {
                     ApplyPBUpdatesForMs(pb, updates, ms);
                     ProcessVoice(pb, buffers, 32, control, BaseCoefficients(), newFilter);
                     AdvanceBuffers(buffers, 32, 6);
@@ -661,9 +799,27 @@ private:
             } else {
                 ProcessVoice(pb, buffers, kAxSamplesPerFrame, control, BaseCoefficients(), newFilter);
             }
+#if defined(RECOMP_PROJECT_FFCC)
+            WritePBGameCube(pbAddr, pb);
+#else
             WritePB(pbAddr, pb);
+#endif
             pbAddr = Hilo(pb.next_pb_hi, pb.next_pb_lo);
         }
+#if defined(RECOMP_PROJECT_FFCC)
+        {
+            // Snapshot the main bus the moment voices are done. Comparing this with the peak seen at
+            // OUTPUT separates "voices are too loud" from "something is folded in afterwards".
+            int64_t p = 0;
+            for (uint32_t i = 0; i < kAxSamplesPerFrame; ++i) {
+                const int64_t v = m_bus[kBusMainL][i] < 0 ? -static_cast<int64_t>(m_bus[kBusMainL][i])
+                                                          : m_bus[kBusMainL][i];
+                if (v > p) p = v;
+            }
+            if (p > m_peakAfterVoices) m_peakAfterVoices = p;
+        }
+        { static unsigned s_n = 0; if (++s_n <= 5 || s_n % 500 == 0) std::fprintf(stderr, "[audio] voices mixed: %u (mix %u)%c", guard, s_n, 10); }
+#endif
     }
 
     // Four consecutive 0x200-halfword polyphase banks; only the voice resample selects a
@@ -989,11 +1145,18 @@ private:
         }
     }
 
+    // diagnostic counter, incremented only for voices that pass the running check
+    mutable uint32_t m_voicesRunThisFrame = 0;
+    uint32_t m_processCallsThisFrame = 0;
+    static unsigned* AxStateHist() { static unsigned h[8] = {0}; return h; }
+    int64_t m_peakAfterVoices = 0;  // main-L peak once voices are mixed, before any aux return
+
     void ProcessVoice(AXPBWii& pb, const AXBuffers& buffers, uint32_t count, AXMixControl control,
                       const int16_t* coeffs, bool newFilter) {
         if (pb.running != 1) {
             return;
         }
+        ++m_voicesRunThisFrame;
         Accelerator accel;
         accel.Setup(&pb);
         std::array<int16_t, kAxSamplesPerFrame> samples{};
@@ -1004,6 +1167,65 @@ private:
         pb.vol_env.cur_volume = static_cast<int16_t>(AxMixKernels::ScaleRamp(
             samples.data(), count, static_cast<uint16_t>(pb.vol_env.cur_volume),
             static_cast<uint16_t>(pb.vol_env.cur_volume_delta)));
+#if defined(RECOMP_PROJECT_FFCC)
+        // Per-voice levels. Only two voices run during the opening, so this is cheap and tells us
+        // WHICH voice is oversized and what it is decoding: a legal voice cannot exceed int16.
+        {
+            static unsigned s_n = 0;
+            int32_t vpeak = 0;
+            for (uint32_t i = 0; i < count; ++i) {
+                const int32_t v = samples[i] < 0 ? -static_cast<int32_t>(samples[i]) : samples[i];
+                if (v > vpeak) vpeak = v;
+            }
+            // The delay block is read and never applied. If the LOUD voices enable it, that is the
+            // missing stereo. Trigger on level, not on a counter, so we catch the ones that matter.
+            if (vpeak > 10000) {
+                static unsigned s_itd = 0;
+                if (s_itd < 6u) {
+                    ++s_itd;
+                    std::fprintf(stderr,
+                        "[audio] itd on %u addr 0x%04x%04x offL %u offR %u tgtL %u tgtR %u (peak %d)%c",
+                        static_cast<unsigned>(pb.initial_time_delay.on),
+                        static_cast<unsigned>(pb.initial_time_delay.addrMemHigh),
+                        static_cast<unsigned>(pb.initial_time_delay.addrMemLow),
+                        static_cast<unsigned>(pb.initial_time_delay.offsetLeft),
+                        static_cast<unsigned>(pb.initial_time_delay.offsetRight),
+                        static_cast<unsigned>(pb.initial_time_delay.targetLeft),
+                        static_cast<unsigned>(pb.initial_time_delay.targetRight),
+                        vpeak, 10);
+                }
+            }
+            // Working-vs-broken diff: sample every running voice periodically across a session
+            // that covers both menus (which come out stereo) and the cutscene (which comes out mono).
+            // Comparing the two sets isolates which parameter differs, without needing to understand
+            // the sound driver at all.
+            // Catch the FIRST frames of every streaming voice. The setup code pans the two halves
+            // of a stereo stream hard apart, and a separate per-frame refresh recomputes the mix from
+            // the track's own (centred) pan. If the refresh clobbers the setup we will see correct
+            // hard panning for a frame or two and then a collapse to centre.
+            if (pb.is_stream != 0) {
+                static unsigned s_vs = 0;
+                if (s_vs < 30u) {
+                    ++s_vs;
+                    std::fprintf(stderr, "[audio] vstart %2u vL %04x vR %04x ctrl %04x peak %5d%c",
+                                 s_vs,
+                                 static_cast<unsigned>(pb.mixer.main_left.volume),
+                                 static_cast<unsigned>(pb.mixer.main_right.volume),
+                                 static_cast<unsigned>(pb.mixer_control_lo), vpeak, 10);
+                }
+            }
+            if ((++s_n % 300u) == 0u) {
+                std::fprintf(stderr,
+                    "[audio] vmix t=%u peak %5d vL %04x vR %04x ctrl %04x type %u fmt %u%c",
+                    s_n, vpeak,
+                    static_cast<unsigned>(pb.mixer.main_left.volume),
+                    static_cast<unsigned>(pb.mixer.main_right.volume),
+                    static_cast<unsigned>(pb.mixer_control_lo),
+                    static_cast<unsigned>(pb.is_stream),
+                    static_cast<unsigned>(pb.audio_addr.sample_format), 10);
+            }
+        }
+#endif
         if (pb.lpf.on) {
             LowPassFilter(samples.data(), count, pb.lpf);
         }
@@ -1203,6 +1425,23 @@ private:
         std::array<int, kAxSamplesPerFrame> aux{};
         for (int* buffer : dst) {
             ReadAuxInBuffer(readAddr, aux.data(), kAxSamplesPerFrame);
+#if defined(RECOMP_PROJECT_FFCC)
+            {   // AUXPROBE: aux is the only path left that can decorrelate the channels, since both
+                // voices are centre panned and the delay block is off. Buffers arrive in L, R, S
+                // order. Identical L and R peaks mean the mixer cannot produce stereo at all.
+                static unsigned s_aux = 0;
+                int64_t pk = 0;
+                for (uint32_t i = 0; i < kAxSamplesPerFrame; ++i) {
+                    const int64_t v = aux[i] < 0 ? -static_cast<int64_t>(aux[i]) : aux[i];
+                    if (v > pk) pk = v;
+                }
+                if (s_aux < 12u) {
+                    ++s_aux;
+                    std::fprintf(stderr, "[audio] auxin #%u src 0x%08x peak %lld%c",
+                                 s_aux, readAddr, static_cast<long long>(pk), 10);
+                }
+            }
+#endif
             readAddr += kAxSamplesPerFrame * sizeof(int32_t);
             AxMixKernels::MixAccumRamp32(buffer, aux.data(), ramp.data(), kAxSamplesPerFrame);
         }
@@ -1239,6 +1478,51 @@ private:
             WriteGuestS32Buffer(surroundAddr + kAxSamplesPerFrame * sizeof(int32_t),
                                 m_bus[kBusAuxCL].data(), kAxSamplesPerFrame);
         }
+#if defined(RECOMP_PROJECT_FFCC)
+        {
+            // Is the bus already out of range before the ramp, or is the ramp doing it?
+            static unsigned s_n = 0;
+            static int64_t s_rawPeak = 0;
+            static int s_peakBus = -1;
+            static uint32_t s_peakIdx = 0;
+            static int64_t s_peakSigned = 0;
+            int64_t rawPeak = 0;
+            for (uint32_t i = 0; i < kAxSamplesPerFrame; ++i) {
+                for (int b = 0; b < 2; ++b) {
+                    const int64_t v = b == 0 ? m_bus[kBusMainL][i] : m_bus[kBusMainR][i];
+                    const int64_t a = v < 0 ? -v : v;
+                    if (a > rawPeak) rawPeak = a;
+                    if (a > s_rawPeak) {
+                        s_rawPeak = a; s_peakBus = b; s_peakIdx = i; s_peakSigned = v;
+                    }
+                }
+            }
+            if (++s_n % 250 == 0) {
+                std::fprintf(stderr,
+                             "[audio] ax output: raw bus peak %lld (bus %s sample %u signed %lld) volume 0x%04x%c",
+                             static_cast<long long>(s_rawPeak), s_peakBus == 0 ? "L" : (s_peakBus == 1 ? "R" : "?"),
+                             s_peakIdx, static_cast<long long>(s_peakSigned),
+                             static_cast<unsigned>(volume), 10);
+                std::fprintf(stderr, "[audio] ax stage: after voices %lld, at output %lld%c",
+                             static_cast<long long>(m_peakAfterVoices),
+                             static_cast<long long>(s_rawPeak), 10);
+                m_peakAfterVoices = 0;
+                {
+                    std::fprintf(stderr,
+                        "[audio] ax states: stopped %u, run %u, other(2..6) %u %u %u %u %u, >=7 %u%c",
+                        AxStateHist()[0], AxStateHist()[1], AxStateHist()[2], AxStateHist()[3],
+                        AxStateHist()[4], AxStateHist()[5], AxStateHist()[6], AxStateHist()[7], 10);
+                    for (int i = 0; i < 8; ++i) AxStateHist()[i] = 0;
+                }
+                std::fprintf(stderr, "[audio] ax frame: ProcessPBList calls %u, voices run %u%c",
+                             m_processCallsThisFrame, m_voicesRunThisFrame, 10);
+                s_rawPeak = 0; s_peakBus = -1; s_peakIdx = 0; s_peakSigned = 0;
+            }
+            m_processCallsThisFrame = 0; m_voicesRunThisFrame = 0;
+            if (false) {
+            }
+        }
+#endif
         std::array<int16_t, kAxSamplesPerFrame * 2> pcm{};
         for (uint32_t i = 0; i < kAxSamplesPerFrame; ++i) {
             const int16_t left = ClampS16((static_cast<int64_t>(m_bus[kBusMainL][i]) * ramp[i]) >> 15);
@@ -1253,6 +1537,15 @@ private:
         // The AI frame (contiguous right/left interleaved) lands in guest memory directly
         // even from the worker: its only reader, PushAudioBlock, runs after Audio_HLE_Tick
         // has joined the worker, so the guest never observes a half-written frame.
+#if defined(RECOMP_PROJECT_FFCC)
+        { static unsigned s_n = 0; static int32_t s_peak = 0;
+          for (size_t i = 0; i < pcm.size(); ++i) { int32_t v = pcm[i] < 0 ? -pcm[i] : pcm[i]; if (v > s_peak) s_peak = v; }
+          if (++s_n % 250 == 0) { std::fprintf(stderr, "[audio] output peak over last 250 mixes: %d (mix %u, %zu samples)%c",
+                                               s_peak, s_n, pcm.size(), 10); s_peak = 0; } }
+#endif
+#if defined(RECOMP_PROJECT_FFCC)
+        FfccAudioDump::Write(pcm.data(), pcm.size());
+#endif
         if (uint8_t* host = MixResolveRange(lrAddr, pcm.size() * sizeof(int16_t))) {
             for (size_t i = 0; i < pcm.size(); ++i) {
                 BigEndian::Write16(host + i * sizeof(uint16_t), static_cast<uint16_t>(pcm[i]));

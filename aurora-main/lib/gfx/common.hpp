@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdio>
 
 #include "../internal.hpp"
 #include "../webgpu/gpu.hpp"
@@ -206,6 +207,8 @@ private:
     }
     if (size > m_capacity) {
       if (!m_owned) {
+        std::fprintf(stderr, "[aurora] ByteBuffer overflow on a fixed staging buffer: need %zu, capacity %zu" "%c", size, m_capacity, 10);
+        std::fflush(stderr);
         abort();
       }
       // Exponential expansion to avoid O(n^2) time complexity.
@@ -225,10 +228,24 @@ private:
 
 namespace aurora::gfx {
 inline constexpr bool UseTextureBuffer = false;
+#if defined(RECOMP_PROJECT_FFCC)
+inline constexpr uint64_t UniformBufferSize = 100663296; // 96mb: FFCC fur/texture builds push >24 MB of uniforms in one frame
+#else
 inline constexpr uint64_t UniformBufferSize = 25165824;  // 24mb
+#endif
+#if defined(RECOMP_PROJECT_FFCC)
+// FFCC builds fur textures with many layered draws inside one frame; the Mario Kart sizes overflow.
+inline constexpr uint64_t VertexBufferSize = 33554432;   // 32mb
+inline constexpr uint64_t IndexBufferSize = 16777216;    // 16mb
+#else
 inline constexpr uint64_t VertexBufferSize = 3145728;    // 3mb
 inline constexpr uint64_t IndexBufferSize = 2097152;     // 2mb
+#endif
+#if defined(RECOMP_PROJECT_FFCC)
+inline constexpr uint64_t StorageBufferSize = 67108864;  // 64mb: FFCC display-list draws overflow the 8 MB slice
+#else
 inline constexpr uint64_t StorageBufferSize = 8388608;   // 8mb
+#endif
 inline constexpr uint64_t TextureUploadSize = 25165824;  // 24mb
 
 extern AuroraStats g_stats;

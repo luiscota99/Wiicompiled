@@ -1,4 +1,8 @@
 #include "hle_stubs.h"
+#include "ffcc/ffcc_stats.h"
+#include "ffcc/ffcc_watch.h"
+void FfccDumpGuestBackchain(const CpuContext* cpu);
+#include "project_guest_addresses.h"
 #include "memory.h"
 #include "abi_bridge.h"
 #include "guest_interrupt_context.h"
@@ -29,6 +33,15 @@
 #endif
 
 #include <aurora/aurora.h>
+#if defined(RECOMP_PROJECT_FFCC)
+#include "hle/ffcc/ffcc_stall.h"
+#endif
+#if defined(RECOMP_PROJECT_FFCC)
+namespace FfccSoundMode { void ForceStereoPlayMode(); }
+namespace FfccCheats { void Tick(); }
+#endif
+#if defined(RECOMP_PROJECT_FFCC)
+#endif
 
 // Forward declaration for OSWakeupThread - used to wake threads on VI retrace queue
 extern "C" void OSWakeupThread_HLE_801aaaa4(CpuContext* ctx);
@@ -133,22 +146,22 @@ ViState g_vi;
 
 
 // Guest-side state addresses used by the SDK's VI globals.
-constexpr uint32_t kViInitializedFlagAddr   = 0x80386b38;
-constexpr uint32_t kViTvFormatAddr          = 0x80386ba8;
-constexpr uint32_t kViRenderWidthAddr       = 0x80350864;
-constexpr uint32_t kViRenderHeightAddr      = 0x80350866;
-constexpr uint32_t kViXfbWidthAddr          = 0x80350872;
-constexpr uint32_t kViXfbHeightAddr         = 0x8035087c;
-constexpr uint32_t kViRetraceCountAddr      = 0x80386be4; // matches VIWaitForRetrace/handler
-constexpr uint32_t kViTimingGuardAddr       = 0x80386b44;
-constexpr uint32_t kViPreRetraceCallback    = 0x80386bb8;
-constexpr uint32_t kViPostRetraceCallback   = 0x80386bb4;
-constexpr uint32_t kViNextFrameBufferAddr   = 0x80386ba0;
-constexpr uint32_t kViNextFrameBufferHwAddr = 0x80350890;
-constexpr uint32_t kViRetraceQueueAddr      = 0x80386bc0; // Thread queue for VIWaitForRetrace
+constexpr uint32_t kViInitializedFlagAddr   = GuestAddr::ViInitializedFlag;
+constexpr uint32_t kViTvFormatAddr          = GuestAddr::ViTvFormat;
+constexpr uint32_t kViRenderWidthAddr       = GuestAddr::ViRenderWidth;
+constexpr uint32_t kViRenderHeightAddr      = GuestAddr::ViRenderHeight;
+constexpr uint32_t kViXfbWidthAddr          = GuestAddr::ViXfbWidth;
+constexpr uint32_t kViXfbHeightAddr         = GuestAddr::ViXfbHeight;
+constexpr uint32_t kViRetraceCountAddr      = GuestAddr::ViRetraceCount; // matches VIWaitForRetrace/handler
+constexpr uint32_t kViTimingGuardAddr       = GuestAddr::ViTimingGuard;
+constexpr uint32_t kViPreRetraceCallback    = GuestAddr::ViPreRetraceCallback;
+constexpr uint32_t kViPostRetraceCallback   = GuestAddr::ViPostRetraceCallback;
+constexpr uint32_t kViNextFrameBufferAddr   = GuestAddr::ViNextFrameBuffer;
+constexpr uint32_t kViNextFrameBufferHwAddr = GuestAddr::ViNextFrameBufferHw;
+constexpr uint32_t kViRetraceQueueAddr      = GuestAddr::ViRetraceQueue; // Thread queue for VIWaitForRetrace
 
 // EGG::BaseSystem::sSystem pointer - must be non-null before post-retrace callback is valid
-constexpr uint32_t kEggSSystemAddr = 0x80386F60;
+constexpr uint32_t kEggSSystemAddr = GuestAddr::EggSSystem;
 
 std::chrono::microseconds IntervalForFormat(uint32_t tvFormat) {
     // NTSC-ish defaults to 60 Hz; PAL uses 50 Hz.
@@ -221,7 +234,7 @@ void ViSetR3(CpuContext* ctx, uint32_t value)
 void WriteGuestStateLocked() {
     try {
         Memory::Write8(kViInitializedFlagAddr, 1);
-        Memory::Write8(kViTimingGuardAddr, 1);
+        if (kViTimingGuardAddr != 0) Memory::Write8(kViTimingGuardAddr, 1);  // absent in some SDKs
         Memory::Write32(kViTvFormatAddr, g_vi.tvFormat);
         Memory::Write16(kViRenderWidthAddr, static_cast<uint16_t>(g_vi.renderWidth));
         Memory::Write16(kViRenderHeightAddr, static_cast<uint16_t>(g_vi.renderHeight));
@@ -243,6 +256,9 @@ void EnsureInitializedLocked() {
         return;
     }
     g_vi.initialized = true;
+    if (GuestAddr::ViDefaultTvFormat != 0 && g_vi.tvFormat == 0) {
+        g_vi.tvFormat = g_vi.pendingTvFormat = GuestAddr::ViDefaultTvFormat;  // what VIInit reads from the IPL-set DCR
+    }
     g_vi.retraceInterval = IntervalForFormat(g_vi.tvFormat);
     g_vi.lastRetrace = Clock::now();
     WriteGuestStateLocked();
@@ -341,7 +357,7 @@ void AdvanceRetrace(CpuContext* ctx, Clock::time_point retraceStamp, bool servic
         if (postCb) {
             // Guard: only invoke callback if sSystem is initialized
             // The callback dereferences sSystem which must be non-null
-            uint32_t sSystemPtr = Memory::Read32(kEggSSystemAddr);
+            uint32_t sSystemPtr = kEggSSystemAddr != 0 ? Memory::Read32(kEggSSystemAddr) : 1u;  // no EGG: no gate
             if (sSystemPtr != 0) {
                 InvokeIndirectCpu(postCb, ctx);
             }
@@ -357,8 +373,14 @@ void AdvanceRetrace(CpuContext* ctx, Clock::time_point retraceStamp, bool servic
         const bool shouldPresentXfb = hasXfbReady && !isBlack && xfbMatches;
         const bool shouldPresentBlack = isBlack && frameActive;
         const bool shouldSubmit = frameActive && (shouldPresentXfb || shouldPresentBlack);
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+        { static unsigned s_n = 0; if (++s_n % 50 == 1) RT_LOG(RT_TAG_VI) << "state: retrace=" << retraceValue << " hasXfb=" << hasXfbReady << " ready=0x" << std::hex << readyXfb << " current=0x" << currentFb << " black=" << std::dec << isBlack << " frameActive=" << frameActive << " submit=" << shouldSubmit << std::endl; }
+#endif
 
         if (shouldSubmit) {
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+            { static unsigned s_presented = 0; ++s_presented; if (s_presented == 1 || s_presented % 60 == 0) RT_LOG(RT_TAG_VI) << "presented frames: " << s_presented << std::endl; }
+#endif
             if (!isBlack || settings_overlay::StartupScreenVisible()) {
                 // Normal presentation: draw overlay on top of GX content
                 settings_overlay::Draw();
@@ -554,7 +576,15 @@ void VI_HLE_PresentFrame(bool presentedXfb, bool paceToRetrace) {
         // cadence, and zero only happens when production outruns VI. "Kept up" means <=1 retrace
         // elapsed; 2+ means a boundary was missed, so Aurora seals that frame without its interpolated
         // slots (a windowed backstop lowers the slot target only under sustained overload).
+#if defined(RECOMP_PROJECT_FFCC)
+        // FFCC PAL renders one frame per TWO retraces (measured: FPS 25.0 on the 50 Hz signal), so the
+        // Wii locked-60 assumption of "<= 1 retrace means kept up" judged EVERY frame as a missed
+        // boundary and sealed it without interpolated slots. Two retraces is the healthy cadence here.
+        constexpr uint32_t kRetracesPerProducedFrame = 2u;
+        aurora_report_producer_paced(retracesElapsed <= kRetracesPerProducedFrame);
+#else
         aurora_report_producer_paced(retracesElapsed <= 1);
+#endif
         // Stamp the sealed frame's presentation schedule so Aurora paces interpolated slots against
         // this same VI timeline. Anchor to the NEXT retrace boundary, not the period just produced,
         // since slots anchored to the current period would already be expired by seal time. Encoding
@@ -584,6 +614,11 @@ void VI_HLE_PresentFrame(bool presentedXfb, bool paceToRetrace) {
         s_lastPacedRetraceCount = g_vi.retraceCount;
     }
     settings_overlay::AdvancePresentedFrame();
+#if defined(RECOMP_PROJECT_FFCC)
+    FfccStall::NoteFrame();
+    FfccSoundMode::ForceStereoPlayMode();
+    FfccCheats::Tick();
+#endif
     g_auroraFrameActive.store(false, std::memory_order_release);
     g_auroraFrameHadWork.store(false, std::memory_order_release);
     if (presentedXfb) {
@@ -844,6 +879,9 @@ extern "C" void VIGetRetraceCount_HLE_801baba4(CpuContext* ctx)
         EnsureInitializedLocked();
         count = g_vi.retraceCount;
     }
+#if defined(RECOMP_PROJECT_FFCC)
+    { static unsigned s_n = 0; if (FfccStats::Enabled() && ++s_n % 200 == 1) RT_LOG(RT_TAG_VI) << "VIGetRetraceCount -> " << count << " (call " << s_n << ")" << std::endl; }
+#endif
     ViSetR3(ctx, count);
     VI_HLE_PollRetrace(ctx);
 }
@@ -887,6 +925,12 @@ PPC_NATIVE_OVERRIDE_VOID(801BAC48, VIGetCurrentLine_HLE_801bac48, (CpuContext* c
 
 extern "C" void VIWaitForRetrace_HLE_801b99ec(CpuContext* ctx)
 {
+#if defined(RECOMP_PROJECT_FFCC)
+    FfccWatch::Poll("VIWaitForRetrace");
+#endif
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+    { static unsigned s_n = 0; if (++s_n % 400 == 2 && ctx) { std::cerr << "[vi] main-loop location (call " << s_n << "):" << std::endl; FfccDumpGuestBackchain(ctx); } }
+#endif
     CpuContext* cpu = ctx ? ctx : &GetPersistentCpuContext();
     
     if (Fiber::GuestFiberManager::IsInitialized()) {

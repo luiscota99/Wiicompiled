@@ -19,7 +19,7 @@ extern "C" void GX_HLE_FIFO_Write8(uint8_t val) { HleFifoWrite(static_cast<u32>(
 extern "C" void GX__SetDrawSync_8016ed08(uint32_t token) {
     (void)token;
     try { uint32_t gd = Memory::Read32(kGXDataPtrAddr); if (gd) {
-        if (Memory::Read32(gd + 0x5FCu)) GX__SetDirtyState_8016ee78();
+        if (Memory::Read32(gd + GxOff::DirtyState)) GX__SetDirtyState_8016ee78();
         Memory::Write16(gd + 2, 0);
     } } catch (...) {}
 }
@@ -27,12 +27,18 @@ extern "C" void GX__SetDrawSync_8016ed08(uint32_t token) {
 extern "C" void GX__SetDrawSync_8016e9fc(uint32_t token) { GX__SetDrawSync_8016ed08(token); }
 PPC_NATIVE_OVERRIDE_VOID(8016e9fc, GX__SetDrawSync_8016e9fc, (uint32_t token), (token));
 
+#if defined(RECOMP_PROJECT_FFCC)
+extern "C" void GX__FinishInterruptHandler_ffcc(CpuContext* ctx);
+#endif
 extern "C" void GX__FinishInterruptHandler_8016ed94() {
     try {
         uint32_t gd = Memory::Read32(kGXDataPtrAddr);
         if (gd) Memory::Write16(gd + 0x0Au, static_cast<uint16_t>(Memory::Read16(gd + 0x0Au) | 0x0008u));
         Memory::Write8(kGxDrawDoneFlagAddr, 1);
     } catch (...) {}
+#if defined(RECOMP_PROJECT_FFCC)
+    GX__FinishInterruptHandler_ffcc(nullptr);  // GameCube GXWaitDrawDone sleeps on FinishQueue
+#endif
 }
 PPC_NATIVE_OVERRIDE_VOID(8016ed94, GX__FinishInterruptHandler_8016ed94, (), ());
 
@@ -86,8 +92,8 @@ extern "C" void GX__SetDispCopyFrame2Field_8016f5f8(uint32_t f) {
     try {
         const uint32_t gd = Memory::Read32(kGXDataPtrAddr);
         if (gd) {
-            Memory::Write32(gd + 0x23Cu, (Memory::Read32(gd + 0x23Cu) & 0xFFFFCFFFu) | ((f & 3u) << 12));
-            Memory::Write32(gd + 0x24Cu, Memory::Read32(gd + 0x24Cu) & 0xFFFFCFFFu);
+            Memory::Write32(gd + GxOff::CpDisp, (Memory::Read32(gd + GxOff::CpDisp) & 0xFFFFCFFFu) | ((f & 3u) << 12));
+            Memory::Write32(gd + GxOff::CpTex, Memory::Read32(gd + GxOff::CpTex) & 0xFFFFCFFFu);
         }
     } catch (...) {}
 }
@@ -99,8 +105,8 @@ extern "C" void GX__SetCopyClamp_8016f618(uint32_t c) {
         const uint32_t gd = Memory::Read32(kGXDataPtrAddr);
         if (gd) {
             const uint32_t clamp = c & 3u;
-            Memory::Write32(gd + 0x23Cu, (Memory::Read32(gd + 0x23Cu) & 0xFFFFFFFCu) | clamp);
-            Memory::Write32(gd + 0x24Cu, (Memory::Read32(gd + 0x24Cu) & 0xFFFFFFFCu) | clamp);
+            Memory::Write32(gd + GxOff::CpDisp, (Memory::Read32(gd + GxOff::CpDisp) & 0xFFFFFFFCu) | clamp);
+            Memory::Write32(gd + GxOff::CpTex, (Memory::Read32(gd + GxOff::CpTex) & 0xFFFFFFFCu) | clamp);
         }
     } catch (...) {}
 }
@@ -120,7 +126,7 @@ PPC_NATIVE_OVERRIDE_VOID(8016fecc, GX__ClearBoundingBox_8016fecc, (), ());
 // ============================================================================
 
 extern "C" void GX__SetDirtyState_8016ee78() {
-    try { uint32_t gd = Memory::Read32(kGXDataPtrAddr); if (gd) Memory::Write32(gd + 0x5FCu, 0); } catch (...) {}
+    try { uint32_t gd = Memory::Read32(kGXDataPtrAddr); if (gd) Memory::Write32(gd + GxOff::DirtyState, 0); } catch (...) {}
 }
 PPC_NATIVE_OVERRIDE_VOID(8016ee78, GX__SetDirtyState_8016ee78, (), ());
 

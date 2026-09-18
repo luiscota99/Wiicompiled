@@ -105,6 +105,7 @@ extern "C" void GX__SetTevKColor_80171ed4(uint32_t id, uint32_t cp) {
 }
 PPC_NATIVE_OVERRIDE_VOID(80171ed4, GX__SetTevKColor_80171ed4, (uint32_t id, uint32_t cp), (id, cp));
 
+
 extern "C" void GX__SetTevKColorSel_80171f30(uint32_t s, uint32_t sel) { if (!TevStageOk(s)) return; GXSetTevKColorSel((GXTevStageID)s, (GXTevKColorSel)sel); }
 PPC_NATIVE_OVERRIDE_VOID(80171f30, GX__SetTevKColorSel_80171f30, (uint32_t s, uint32_t sel), (s, sel));
 

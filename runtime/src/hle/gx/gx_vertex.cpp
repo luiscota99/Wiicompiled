@@ -44,6 +44,9 @@ extern "C" void GX__ClearVtxDesc_8016dc34() {
 PPC_NATIVE_OVERRIDE_VOID(8016dc34, GX__ClearVtxDesc_8016dc34, (), ());
 
 extern "C" void GX__SetVtxDesc_8016d3a4(uint32_t a, uint32_t t) {
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+    { static int n = 0; if (n < 400) { ++n; RT_LOGF(RT_TAG_GX, "vtxdesc attr=%u type=%u" "%c", a, t, 10); } }
+#endif
     const uint32_t attr = CanonicalVtxAttr(a);
     if(attr>=26||attr==GX_VA_NULL) return;
     const GXAttrType oldType = g_hleGxState.vtxDesc[attr];
@@ -103,6 +106,9 @@ PPC_NATIVE_OVERRIDE_VOID(8016dba4, GX__GetVtxDescv_8016dba4, (uint32_t la), (la)
 // ============================================================================
 
 extern "C" void GX__SetVtxAttrFmt_8016dc68(uint32_t vf, uint32_t a, uint32_t c, uint32_t t, uint32_t fr) {
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+    { static int n = 0; if (n < 400) { ++n; RT_LOGF(RT_TAG_GX, "vtxattrfmt vf=%u attr=%u cnt=%u type=%u frac=%u" "%c", vf, a, c, t, fr, 10); } }
+#endif
     const uint32_t attr = CanonicalVtxAttr(a);
     if(vf<8&&attr<26){
         const VtxAttrFmt oldFmt = g_hleGxState.vtxAttrFmt[vf][attr];

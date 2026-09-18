@@ -221,7 +221,13 @@ extern "C" void LCQueueWait_HLE_801a1988(CpuContext*)
 }
 
 PPC_NATIVE_OVERRIDE_VOID(801a15ec, Cache_Maintenance_Stub, (), ()); // DCEnable
-PPC_NATIVE_OVERRIDE_VOID(801a16e4, DCZeroRange_HLE_801a16e4, (CpuContext* ctx), (ctx)); // DCZeroRange
+PPC_NATIVE_OVERRIDE_VOID(801a16e4, DCZeroRange_HLE_801a16e4, (CpuContext* ctx), (ctx));
+// FFCC entry points for the same routines. The registrations above carry Mario Kart Wii
+// addresses and are never reached on this game; without these the guest runs the retail
+// routine against hardware the runtime does not emulate. Addresses from main.elf.MAP.
+#if defined(RECOMP_PROJECT_FFCC)
+PPC_NATIVE_OVERRIDE_VOID(8017cf78, DCZeroRange_HLE_801a16e4, (CpuContext* ctx), (ctx));
+#endif // DCZeroRange
 PPC_NATIVE_OVERRIDE_VOID(801a1710, Cache_Maintenance_Stub, (), ()); // ICInvalidateRange
 PPC_NATIVE_OVERRIDE_VOID(801a1744, Cache_Maintenance_Stub, (), ()); // ICFlashInvalidate
 PPC_NATIVE_OVERRIDE_VOID(801a1754, Cache_Maintenance_Stub, (), ()); // ICEnable
@@ -229,8 +235,17 @@ PPC_NATIVE_OVERRIDE_VOID(801a1768, Cache_Maintenance_Stub, (), ()); // __LCEnabl
 PPC_NATIVE_OVERRIDE_VOID(801a1834, Cache_Maintenance_Stub, (), ()); // LCEnable
 PPC_NATIVE_OVERRIDE_VOID(801a186c, Cache_Maintenance_Stub, (), ()); // LCDisable
 PPC_NATIVE_OVERRIDE_VOID(801a1894, LCLoadBlocks_HLE_801a1894, (CpuContext* ctx), (ctx)); // LCLoadBlocks
-PPC_NATIVE_OVERRIDE_VOID(801a18b8, LCStoreBlocks_HLE_801a18b8, (CpuContext* ctx), (ctx)); // LCStoreBlocks
-PPC_NATIVE_OVERRIDE(801a18dc, LCStoreData_HLE_801a18dc, uint32_t, (CpuContext* ctx), (ctx)); // LCStoreData
+PPC_NATIVE_OVERRIDE_VOID(801a18b8, LCStoreBlocks_HLE_801a18b8, (CpuContext* ctx), (ctx));
+#if defined(RECOMP_PROJECT_FFCC)
+PPC_NATIVE_OVERRIDE_VOID(8017d128, LCStoreBlocks_HLE_801a18b8, (CpuContext* ctx), (ctx));
+#endif // LCStoreBlocks
+PPC_NATIVE_OVERRIDE(801a18dc, LCStoreData_HLE_801a18dc, uint32_t, (CpuContext* ctx), (ctx));
+#if defined(RECOMP_PROJECT_FFCC)
+PPC_NATIVE_OVERRIDE(8017d14c, LCStoreData_HLE_801a18dc, uint32_t, (CpuContext* ctx), (ctx));
+#endif // LCStoreData
 PPC_NATIVE_OVERRIDE(801a197c, LCQueueLength_HLE_801a197c, uint32_t, (CpuContext* ctx), (ctx)); // LCQueueLength
-PPC_NATIVE_OVERRIDE_VOID(801a1988, LCQueueWait_HLE_801a1988, (CpuContext* ctx), (ctx)); // LCQueueWait
+PPC_NATIVE_OVERRIDE_VOID(801a1988, LCQueueWait_HLE_801a1988, (CpuContext* ctx), (ctx));
+#if defined(RECOMP_PROJECT_FFCC)
+PPC_NATIVE_OVERRIDE_VOID(8017d1f8, LCQueueWait_HLE_801a1988, (CpuContext* ctx), (ctx));
+#endif // LCQueueWait
 PPC_NATIVE_OVERRIDE_VOID(801a1ae4, Cache_Maintenance_Stub, (), ()); // OS____CacheInit

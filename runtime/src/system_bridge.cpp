@@ -334,8 +334,14 @@ void SystemBridge::Initialize() {
     // These set up vtables and other critical infrastructure
     RT_LOG(RT_TAG_RUNTIME) << "Running static constructors for main DOL..." << std::endl;
 
+#if defined(RECOMP_PROJECT_FFCC)
+    // FFCC runs its own constructor table from __start -> __init_cpp; this range is Mario Kart's.
+    const uint32_t dolCtorStart = 0;
+    const uint32_t dolCtorEnd = 0;
+#else
     const uint32_t dolCtorStart = 0x80244DE0;
     const uint32_t dolCtorEnd = 0x80244EA0;
+#endif
 
     int dolCount = 0;
     for (uint32_t addr = dolCtorStart; addr < dolCtorEnd; addr += 4) {
@@ -645,3 +651,6 @@ void SystemBridge::DumpCpuState(std::ostream& os, const CpuContext* cpu) {
     }
     os << std::setfill(' ');
 }
+
+// FFCC port diagnostics: guest backchain of a context to stderr (periodic main-loop location).
+void FfccDumpGuestBackchain(const CpuContext* cpu) { DumpGuestBackchain(std::cerr, cpu); }

@@ -53,6 +53,10 @@ namespace AxDspHle {
 void SetMixWorkerEnabled(bool enabled);
 }
 
+#if defined(RECOMP_PROJECT_FFCC)
+namespace FfccGbaScreens { void Draw(); }
+#endif
+
 namespace settings_overlay {
 namespace {
 
@@ -1436,6 +1440,9 @@ void Draw() noexcept {
     DrawTopBar();
     DrawExitPrompt();
     controller_mapping_wizard::Draw();
+#if defined(RECOMP_PROJECT_FFCC)
+    FfccGbaScreens::Draw();   // GBA personal screens for multiplayer (hle/ffcc/ffcc_gba_screens.cpp)
+#endif
     // The wizard captures raw presses; keep them out of the game.
     const bool inputBlocked = controller_mapping_wizard::IsActive() || g_rebind.active;
     PADBlockInput(inputBlocked);
@@ -1444,6 +1451,9 @@ void Draw() noexcept {
 }
 
 bool StartupScreenVisible() noexcept {
+#if defined(RECOMP_PROJECT_FFCC)
+    return false;  // FFCC has no wrist-strap scene; the cover would never be dismissed
+#endif
     return !g_strapInputAccepted.load(std::memory_order_acquire) ||
            g_presentedFrame < g_startupDismissFrame.load(std::memory_order_relaxed);
 }

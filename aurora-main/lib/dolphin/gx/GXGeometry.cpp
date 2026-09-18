@@ -1,7 +1,12 @@
 #include "gx.hpp"
+#include <cstdio>
 #include "__gx.h"
 #include "dolphin/gd/GDGeometry.h"
 #include "../../gx/fifo.hpp"
+
+#if defined(RECOMP_PROJECT_FFCC) && !defined(FFCC_DEBUG_LOGS)
+#define FFCC_DEBUG_LOGS 0
+#endif
 
 static inline void SETVCDATTR(GXAttr attr, GXAttrType type) {
   switch (attr) {
@@ -240,6 +245,11 @@ void GXSetVtxAttrFmt(GXVtxFmt vtxfmt, GXAttr attr, GXCompCnt cnt, GXCompType typ
   const u32 oldVc = *vc;
   const bool auroraStateChanged = AuroraVtxAttrFmtDiffers(vtxfmt, attr, cnt, type, frac);
   SETVAT(va, vb, vc, attr, cnt, type, frac);
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+  if (vtxfmt == 0 && (attr == GX_VA_NRM || attr == GX_VA_NBT)) {
+    static int n = 0; if (n < 60) { ++n; std::fprintf(stderr, "[aurora-dbg] SetVtxAttrFmt fmt0 attr=%d cnt=%d type=%d va=%08X (old %08X)" "%c", (int)attr, (int)cnt, (int)type, *va, oldVa, 10); }
+  }
+#endif
   if (aurora::gx::fifo::in_display_list() || auroraStateChanged || *va != oldVa || *vb != oldVb ||
       *vc != oldVc) {
     __gx->dirtyState |= 0x10;

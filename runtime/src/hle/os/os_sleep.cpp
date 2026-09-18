@@ -1,6 +1,7 @@
 // OSSleepTicks / OSSleepThread parking plus the host-side sleep-timer table.
 
 #include <algorithm>
+#include "../ffcc/ffcc_watch.h"
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -392,9 +393,16 @@ void ReportUnparkableSleep(uint32_t queuePtr, uint32_t thread)
 // Puts the current thread to sleep on a specified wait queue.
 extern "C" void OSSleepThread_HLE_801aa9b8(CpuContext* ctx)
 {
+#if defined(RECOMP_PROJECT_FFCC)
+    FfccWatch::Poll("OSSleepThread");
+#endif
     CpuContext* cpu = ctx ? ctx : &GetPersistentCpuContext();
     const uint32_t queuePtr = cpu->gpr[3];
-    
+    if (queuePtr != 0 && queuePtr < 0x80000000u) {
+        RT_LOG(RT_TAG_OS) << "OSSleepThread: bad queue 0x" << std::hex << queuePtr << " from lr=0x" << cpu->lr
+                          << " thread=0x" << ::Memory::Read32(kOSRunningContextAddr) << std::dec << std::endl;
+        return;
+    }
     if (queuePtr == 0) {
         RT_LOG(RT_TAG_OS) << "OSSleepThread: null queue pointer!" << std::endl;
         return;

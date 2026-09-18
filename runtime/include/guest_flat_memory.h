@@ -94,6 +94,9 @@ void Initialize(const std::vector<RegionRequest>& regions);
 // outside every mapped region. This is what the page table and
 // Memory::GetPointer hand out.
 uint8_t* HostPointer(uint32_t guestAddress);
+#if defined(RECOMP_PROJECT_FFCC)
+uint8_t* GcRegisterPage(uint32_t guestAddress);  // CP/PE/MEM register storage (guest_flat_memory.cpp)
+#endif
 
 // Deferred (EFB) reads: the covered guest pages are made PAGE_NOACCESS in the
 // guest view so a flat read traps and materializes the copy.

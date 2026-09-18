@@ -1,4 +1,5 @@
 #include "memory.h"
+#include "../project_guest_addresses.h"
 #include "guest_interrupt_context.h"
 #include "hle_stubs.h"
 #include "ppc_runtime.h"
@@ -21,10 +22,10 @@ namespace {
 constexpr uint32_t kDefaultSampleRate = 32000u;
 constexpr uint32_t kAudioChannels = 2u;
 constexpr uint32_t kBytesPerSample = 2u;
-constexpr uint32_t kAIInitializedAddr = 0x80386448u;
-constexpr uint32_t kAICallbackBusyAddr = 0x8038644Cu;
-constexpr uint32_t kAICallbackStackSwitchAddr = 0x8038647Cu;
-constexpr uint32_t kAIDmaCallbackAddr = 0x80386480u;
+constexpr uint32_t kAIInitializedAddr = GuestAddr::AIInitialized;
+constexpr uint32_t kAICallbackBusyAddr = GuestAddr::AICallbackBusy;
+constexpr uint32_t kAICallbackStackSwitchAddr = GuestAddr::AICallbackStackSwitch;
+constexpr uint32_t kAIDmaCallbackAddr = GuestAddr::AIDmaCallback;
 
 // Max completed 3 ms DMA blocks delivered per tick. Draining several at once catches up
 // backlog from a long frame without letting a large stall spiral into an unbounded loop.
@@ -232,6 +233,12 @@ extern "C" void __AXOutInitDSP_801269bc(CpuContext* ctx)
 }
 
 PPC_NATIVE_OVERRIDE_VOID(801269bc, __AXOutInitDSP_801269bc, (CpuContext* ctx), (ctx));
+// FFCC entry points for the same routines. The registrations above carry Mario Kart Wii
+// addresses and are never reached on this game; without these the guest runs the retail
+// routine against hardware the runtime does not emulate. Addresses from main.elf.MAP.
+#if defined(RECOMP_PROJECT_FFCC)
+PPC_NATIVE_OVERRIDE_VOID(80192934, __AXOutInitDSP_801269bc, (CpuContext* ctx), (ctx));
+#endif
 
 
 
@@ -516,7 +523,9 @@ int64_t ConsumeAudioPollDeltaMicros()
 
 void Audio_HLE_Poll(CpuContext* ctx)
 {
-    MusicAttenuation::TickGuest();
+#if !defined(RECOMP_PROJECT_FFCC)
+    MusicAttenuation::TickGuest();  // Mario Kart music ducking: reads Mario Kart sound-player globals
+#endif
     Audio_HLE_Tick(ctx, static_cast<uint32_t>(ConsumeAudioPollDeltaMicros()));
 }
 

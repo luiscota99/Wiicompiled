@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hle_stubs.h"
+#include "../project_guest_addresses.h"
 #include "memory.h"
 #include "gx_guest_write.h"
 #include "ppc_runtime.h"
@@ -54,13 +55,13 @@ bool is_offscreen() noexcept;
 }
 
 // --- Constants ---
-constexpr uint32_t kGXDataPtrAddr = 0x803886C8;
-constexpr uint32_t kDlFifoAddr = 0x80344090;
-constexpr uint32_t kDlWritePtrAddr = 0x803440A4;
-constexpr uint32_t kDlCountAddr = 0x803440AC;
+constexpr uint32_t kGXDataPtrAddr = GuestAddr::GxDataPtr;
+constexpr uint32_t kDlFifoAddr = GuestAddr::GxDlFifo;
+constexpr uint32_t kDlWritePtrAddr = GuestAddr::GxDlWritePtr;
+constexpr uint32_t kDlCountAddr = GuestAddr::GxDlCount;
 constexpr uint32_t kDlWrapFlagOffset = 0x20;
 constexpr uint32_t kMaxTluts = 20;
-constexpr uint32_t kGxDrawDoneFlagAddr = 0x803867d8;
+constexpr uint32_t kGxDrawDoneFlagAddr = GuestAddr::GxDrawDoneFlag;
 
 // --- External Declarations ---
 extern "C" void GXInitTexObjTlut(GXTexObj* obj, u32 tlut);

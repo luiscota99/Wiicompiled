@@ -38,10 +38,14 @@ bool describe(GXTexFmt format, Layout& layout, BlockInfo& block) noexcept {
     block = {8, 8, 32};
     return true;
   case GX_TF_I8:
+  case GX_TF_Z8:
   case GX_CTF_A8:
   case GX_CTF_R8:
   case GX_CTF_G8:
   case GX_CTF_B8:
+    // Z8 is one byte per texel, so it encodes exactly like I8. I8 emits pixel.r, and the red channel
+    // of the resolved depth texture holds the high depth byte, which is the byte Z8 carries. This
+    // matches how Z16 rides on IA8 and Z24X8 on RGBA8 just below.
     layout = Layout::I8;
     block = {8, 4, 32};
     return true;

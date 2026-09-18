@@ -2,6 +2,7 @@
 // helpers shared with the scheduler.
 
 #include <cstdint>
+#include "../project_guest_addresses.h"
 #include <iostream>
 
 #include "abi_bridge.h"
@@ -216,7 +217,7 @@ void UnlockAllThreadMutexes(CpuContext* cpu, uint32_t threadPtr)
     }
     CpuContextScope scope(cpu);
     cpu->gpr[3] = threadPtr;
-    InvokeIndirectCpu(0x801A8088u, cpu); // __OSUnlockAllMutex
+    InvokeIndirectCpu(GuestAddr::OSUnlockAllMutex, cpu); // __OSUnlockAllMutex
 }
 
 // Shared tail of OSExitThread/OSCancelThread: clears context, delists if detached, marks
@@ -298,6 +299,9 @@ extern "C" void OSCreateThread_HLE_801a9e84(CpuContext* ctx)
         ::Memory::Write32(threadPtr + 0x2E8u, 0);
         ::Memory::Write32(threadPtr + 0x2F8u, 0);
         ::Memory::Write32(threadPtr + 0x2F4u, 0);
+        ::Memory::Write32(threadPtr + 0x2DCu, 0);              // queue: not waiting
+        ::Memory::Write32(threadPtr + 0x2E0u, 0);              // link.next / link.prev: not queued
+        ::Memory::Write32(threadPtr + 0x2E4u, 0);
         
         // Stack setup - write frame markers
         ::Memory::Write32(alignedStack - 8, 0);
@@ -311,7 +315,7 @@ extern "C" void OSCreateThread_HLE_801a9e84(CpuContext* ctx)
             cpu->gpr[3] = threadPtr;
             cpu->gpr[4] = entryFunc;
             cpu->gpr[5] = alignedStack - 8;
-            InvokeIndirectCpu(0x801A20BCu, cpu); // OSInitContext
+            InvokeIndirectCpu(GuestAddr::OSInitContext, cpu); // OSInitContext
         }
 
         if (IsThpVideoDecoderEntry(entryFunc)) {
@@ -325,7 +329,7 @@ extern "C" void OSCreateThread_HLE_801a9e84(CpuContext* ctx)
 
         }
 
-        ::Memory::Write32(threadPtr + 0x84u, 0x801AA0F0u); // LR = OSExitThread
+        ::Memory::Write32(threadPtr + 0x84u, GuestAddr::OSExitThread); // LR = OSExitThread
         ::Memory::Write32(threadPtr + 0x0Cu, entryArg);    // r3 = argument
 
         // Stack info
@@ -341,9 +345,9 @@ extern "C" void OSCreateThread_HLE_801a9e84(CpuContext* ctx)
         // Match the original OSCreateThread slow-path initialization that runs
         // once scheduler globals are live. THP worker threads depend on these
         // queue/list blocks being fully zeroed.
-        constexpr uint32_t kSchedulerInitFlagAddr = 0x80347130u;
-        constexpr uint32_t kThreadAttrSourceAddr = 0x80385AA8u;
-        if (Memory::Contains(kSchedulerInitFlagAddr, 4) &&
+        constexpr uint32_t kSchedulerInitFlagAddr = GuestAddr::SchedulerInitFlag;
+        constexpr uint32_t kThreadAttrSourceAddr = GuestAddr::ThreadAttrSource;
+        if (kSchedulerInitFlagAddr != 0 && Memory::Contains(kSchedulerInitFlagAddr, 4) &&
             ::Memory::Read32(kSchedulerInitFlagAddr) != 0) {
             uint32_t srr1 = ::Memory::Read32(threadPtr + 0x19Cu);
             srr1 |= 0x900u;

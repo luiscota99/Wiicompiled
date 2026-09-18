@@ -1,4 +1,5 @@
-﻿#include "hle_stubs.h"
+#include "hle_stubs.h"
+#include "hle/project_guest_addresses.h"
 #include "isa/big_endian.h"
 #include "hle/dvd_contract.h"
 #include "hle/runtime_parse_helpers.h"
@@ -749,7 +750,15 @@ extern "C" const char* DVDResolveHostPathForTest(const char* dvdPath)
 
 static void InitDvdWaitingQueues()
 {
-    constexpr uint32_t kQueueBase = 0x80343230;
+#if defined(RECOMP_PROJECT_FFCC)
+    // FFCC replaces the disc API itself (DVDInit / DVDOpen / DVDReadAsyncPrio / ... are native),
+    // so the SDK's own DVD statics belong to the game and must not be written here. Seeding them
+    // made the translated stateReady() find work in WaitingQueue and issue a real drive command,
+    // which faults on the DI registers at 0xCC0060xx. These writes were harmless before only
+    // because they targeted Mario Kart addresses that FFCC never reads.
+    return;
+#endif
+    constexpr uint32_t kQueueBase = GuestAddr::DvdWaitingQueue;
     for (uint32_t i = 0; i < 4; ++i) {
         const uint32_t queue = kQueueBase + (i * 8);
         Memory::Write32(queue + 0, queue);
@@ -759,16 +768,26 @@ static void InitDvdWaitingQueues()
 
 static void CompleteDvdCancelState()
 {
+#if defined(RECOMP_PROJECT_FFCC)
+    // FFCC replaces the disc API itself (DVDInit / DVDOpen / DVDReadAsyncPrio / ... are native),
+    // so the SDK's own DVD statics belong to the game and must not be written here. Seeding them
+    // made the translated stateReady() find work in WaitingQueue and issue a real drive command,
+    // which faults on the DI registers at 0xCC0060xx. These writes were harmless before only
+    // because they targeted Mario Kart addresses that FFCC never reads.
+    return;
+#endif
     InitDvdWaitingQueues();
 
     // These are the SDK DVD globals used by DVDCancelAll/__DVDPrepareReset.
     // The actual drive work is HLE'd, so complete pending cancel/reset waits.
-    Memory::Write32(0x80386664, 0); // Canceling
-    Memory::Write32(0x80386668, 0); // ResumeFromHere
-    Memory::Write32(0x80386670, 0); // PausingFlag
+    Memory::Write32(GuestAddr::DvdCanceling, 0); // Canceling
+    Memory::Write32(GuestAddr::DvdResumeFromHere, 0); // ResumeFromHere
+    Memory::Write32(GuestAddr::DvdPausingFlag, 0); // PausingFlag
+#if !defined(RECOMP_PROJECT_FFCC)
     Memory::Write32(0x8038667C, 1); // CancelAllSync complete
     Memory::Write32(0x803866A8, 1); // PrepareReset complete
-    Memory::Write32(0x803866F0, 0); // executing command block
+#endif
+    Memory::Write32(GuestAddr::DvdExecuting, 0); // executing command block
 }
 
 // 0x8015EA1C -> DVDInit
@@ -785,12 +804,17 @@ extern "C" void DVDInit_8015EA1C()
 
     // 1. Initialize Global Flags (Emulate OS state)
     // These addresses are standard OS globals for DVD context
+#if !defined(RECOMP_PROJECT_FFCC)
     Memory::Write8(0x80386724, 1);   // Contexts initialized
     Memory::Write8(0x80386725, 1);   // LowInit called
     Memory::Write32(0x80386720, 0);  // Current context index
-    Memory::Write8(0x803866a0, 1);   // DVDInit called flag
+#endif
+#if !defined(RECOMP_PROJECT_FFCC)
+    Memory::Write8(GuestAddr::DvdInitialized, 1);   // DVDInit called flag
+#endif
     CompleteDvdCancelState();
 
+#if !defined(RECOMP_PROJECT_FFCC)
     // 2. Initialize DVD Context structures (prevent crashes in callbacks)
     constexpr uint32_t kContextBase = 0x803434e0;
     constexpr uint32_t kMagicValue = 0xFEEBDAED;
@@ -799,6 +823,7 @@ extern "C" void DVDInit_8015EA1C()
         Memory::Write32(ctx + 0x0C, kMagicValue);
         Memory::Write32(ctx + 0x10, i);
     }
+#endif
 
     // 3. Set Low Memory Globals (The "Magic" Identification)
     // This tells the game "Yes, I am Mario Kart Wii"
@@ -840,7 +865,7 @@ extern "C" void DVDInit_8015EA1C()
     BuildAndPublishRuntimeFst();
 
     // Initialize the translated DVD filesystem so it can use the published FST.
-    constexpr uint32_t kDvdFsInitAddress = 0x8015DF1C;
+    constexpr uint32_t kDvdFsInitAddress = GuestAddr::DvdFsInit;
     if (TranslatedFunctionRegistry::FindByAddressPtr(kDvdFsInitAddress)) {
         InvokeIndirectCpu(kDvdFsInitAddress, &GetPersistentCpuContext());
     }
@@ -928,6 +953,9 @@ extern "C" int32_t DVD__ReadAsyncPrio_HLE_8015e74c(uint32_t fileInfoPtr,
                                                    uint32_t callbackPtr,
                                                    int32_t prio)
 {
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+    { static unsigned s_n = 0; if (++s_n <= 40 || s_n % 100 == 0) RT_LOG(RT_TAG_DVD) << "dvd read fileinfo=0x" << std::hex << fileInfoPtr << " start=0x" << Memory::Read32(fileInfoPtr + 0x30) << " len=0x" << Memory::Read32(fileInfoPtr + 0x34) << std::dec << " (call " << s_n << ")" << std::endl; }
+#endif
     const int32_t bytesRead = DVDReadPrio_8015E834(fileInfoPtr, bufferPtr, length, offset, prio);
 
     InvokeDvdCallback(callbackPtr, bytesRead, fileInfoPtr);

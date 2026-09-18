@@ -18,6 +18,7 @@ extern "C" GXFifoObj* GXInit(void* base, u32 size);
 // ============================================================================
 
 
+#if !defined(RECOMP_PROJECT_FFCC)
 /**
  * GXInit HLE - Initialize the Graphics subsystem
  * This replaces the translated function that writes to MMIO addresses.
@@ -57,10 +58,10 @@ extern "C" uint32_t GX__Init_8016b850(uint32_t fifoBase, uint32_t fifoSize)
     try {
         uint32_t gd = Memory::Read32(kGXDataPtrAddr);
         if (gd) {
-            Memory::Write32(gd + 0x254, 0);
-            Memory::Write32(gd + 0x174, 0x0f0000ff);
+            Memory::Write32(gd + GxOff::GenMode, 0);
+            Memory::Write32(gd + GxOff::BpMask, 0x0f0000ff);
             Memory::Write32(gd + 0x7c, 0x22000000);
-            Memory::Write32(gd + 0x170, 0x27000000);
+            Memory::Write32(gd + GxOff::Iref, 0x27000000);
             const uint32_t baseRegs[] = {0x30, 0x38};
             for (int i = 0; i < 2; ++i) {
                 uint32_t r = baseRegs[i];
@@ -84,6 +85,7 @@ extern "C" uint32_t GX__Init_8016b850(uint32_t fifoBase, uint32_t fifoSize)
     return kFifoObjAddr;
 }
 PPC_NATIVE_OVERRIDE(8016b850, GX__Init_8016b850, uint32_t, (uint32_t fifoBase, uint32_t fifoSize), (fifoBase, fifoSize));
+#endif
 
 // ============================================================================
 // FIFO Management
@@ -103,6 +105,7 @@ PPC_NATIVE_OVERRIDE_VOID(8016cdbc, __GX__SaveFifo_8016cdbc, (uint32_t fa), (fa))
 extern "C" void GX__GetCPUFifo_8016cf10(uint32_t fa) { auto* d=(GXFifoObj*)GuestToHostPtr(fa, sizeof(GXFifoObj)); auto* s=GXGetCPUFifo(); if(d&&s) std::memcpy(d,s,sizeof(GXFifoObj)); }
 PPC_NATIVE_OVERRIDE_VOID(8016cf10, GX__GetCPUFifo_8016cf10, (uint32_t fa), (fa));
 
+#if !defined(RECOMP_PROJECT_FFCC)
 extern "C" void __GX__FifoInit_8016d180()
 {
     constexpr uint32_t kCpInterruptId = 0x11u;
@@ -160,6 +163,7 @@ extern "C" void __GX__PEInit_8016ee14()
     } catch (const ::Memory::AccessViolation&) {}
 }
 PPC_NATIVE_OVERRIDE_VOID(8016ee14, __GX__PEInit_8016ee14, (), ());
+#endif
 
 // ============================================================================
 // Display List Recording
@@ -169,21 +173,21 @@ extern "C" void GX__BeginDisplayList_80172e00(uint32_t la, uint32_t s) {
     try {
         uint32_t gd = Memory::Read32(kGXDataPtrAddr);
         if (!gd) return;
-        if (Memory::Read32(gd + 0x5FCu)) GX__SetDirtyState_8016ee78();
-        if (Memory::Read8(gd + 0x5F9u)) std::memcpy(Memory::GetPointer(0x80344110, 0x600), Memory::GetPointer(gd, 0x600), 0x600);
-        Memory::Write32(0x80344094, la + s - 4u);
-        Memory::Write32(0x803440AC, 0);
-        Memory::Write32(0x80344090, la);
-        Memory::Write32(0x80344098, s);
-        Memory::Write32(0x803440A4, la);
-        Memory::Write32(0x803440A8, la);
-        Memory::Write8(gd + 0x5F8u, 1u);
+        if (Memory::Read32(gd + GxOff::DirtyState)) GX__SetDirtyState_8016ee78();
+        if (Memory::Read8(gd + GxOff::DlSaveContext)) std::memcpy(Memory::GetPointer(GuestAddr::GxSavedData, GxOff::Size), Memory::GetPointer(gd, GxOff::Size), GxOff::Size);
+        Memory::Write32(GuestAddr::GxDlFifo + 4u, la + s - 4u);
+        Memory::Write32(GuestAddr::GxDlCount, 0);
+        Memory::Write32(GuestAddr::GxDlFifo, la);
+        Memory::Write32(GuestAddr::GxDlFifo + 8u, s);
+        Memory::Write32(GuestAddr::GxDlWritePtr, la);
+        Memory::Write32(GuestAddr::GxDlFifo + 0x18u, la);
+        Memory::Write8(gd + GxOff::InDispList, 1u);
         // Mirror the guest fifo-object fields the FIFO write path consumes so
         // HleFifoWrite never has to read them back out of guest memory.
         BeginDisplayListRecording(la, s);
         GXFlush();
-        GX__GetCPUFifo_8016cf10(0x80344710);
-        GX__SetCPUFifo_8016c94c(0x80344090);
+        GX__GetCPUFifo_8016cf10(GuestAddr::GxOldCpuFifo);
+        GX__SetCPUFifo_8016c94c(GuestAddr::GxDlFifo);
     } catch (...) {}
 }
 PPC_NATIVE_OVERRIDE_VOID(80172e00, GX__BeginDisplayList_80172e00, (uint32_t la, uint32_t s), (la, s));
@@ -191,22 +195,22 @@ PPC_NATIVE_OVERRIDE_VOID(80172e00, GX__BeginDisplayList_80172e00, (uint32_t la, 
 extern "C" uint32_t GX__EndDisplayList_80172eb4() {
     try {
         GXFlush();
-        GX__GetCPUFifo_8016cf10(0x80344090);
+        GX__GetCPUFifo_8016cf10(GuestAddr::GxDlFifo);
         const uint8_t wrapped = Memory::Read8(kDlFifoAddr + kDlWrapFlagOffset);
-        GX__SetCPUFifo_8016c94c(0x80344710);
+        GX__SetCPUFifo_8016c94c(GuestAddr::GxOldCpuFifo);
 
         const uint32_t gd = Memory::Read32(kGXDataPtrAddr);
         if (gd) {
-            if (Memory::Read8(gd + 0x5F9u) != 0) {
+            if (Memory::Read8(gd + GxOff::DlSaveContext) != 0) {
                 const int32_t interruptLevel = OS__DisableInterrupts_801a65ac();
                 const uint32_t savedWord8 = Memory::Read32(gd + 0x08u);
-                std::memcpy(Memory::GetPointer(gd, 0x600),
-                            Memory::GetPointer(0x80344110, 0x600),
-                            0x600);
+                std::memcpy(Memory::GetPointer(gd, GxOff::Size),
+                            Memory::GetPointer(GuestAddr::GxSavedData, GxOff::Size),
+                            GxOff::Size);
                 Memory::Write32(gd + 0x08u, savedWord8);
                 OS__RestoreInterrupts_801a65d4(interruptLevel);
             }
-            Memory::Write8(gd + 0x5F8u, 0);
+            Memory::Write8(gd + GxOff::InDispList, 0);
         }
 
         // Publish the cached cursor/count before the count is read back below.

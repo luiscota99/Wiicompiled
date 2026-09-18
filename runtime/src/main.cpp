@@ -70,6 +70,7 @@
 #include <aurora/gfx.h>
 #include <dolphin/gx/GXAurora.h>
 #include <dolphin/vi.h>
+void DumpHostStackTraceForRuntimeHelper();  // memory.cpp (global scope)
 
 // Defined in `runtime/src/hle/vi.cpp` (used by GX/VI HLE).
 extern std::atomic_bool g_auroraFrameActive;
@@ -774,6 +775,11 @@ void ShowRuntimeFatalPopup(std::string_view category, std::string_view details) 
             }
         }
         message.append("\n\nSee the WiiCompiled Logs folder for the full diagnostic.");
+        if (std::getenv("WIICOMPILED_NO_POPUP") != nullptr) {  // automation: no modal dialog
+            std::fprintf(stderr, "[runtime] fatal popup suppressed: %s" "\n", message.c_str());
+            std::fflush(stderr);
+            return;
+        }
 #if defined(_WIN32)
         ::MessageBoxA(nullptr, message.c_str(), "WiiCompiled - Fatal Error",
                       MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TASKMODAL);
@@ -1207,19 +1213,18 @@ void AbortSignalHandler(int signum) {
     // emitted here too. It is idempotent, so a later AtExitHandler is a no-op.
     GuestFlat::LogFaultSummary();
 
+    std::fprintf(stderr, "[runtime] abort site host trace:" "%c", 10);
+    std::fflush(stderr);
+    DumpHostStackTraceForRuntimeHelper();  // abort site host trace (the guest context alone does not name the aborting HLE)
+    WriteFatalLogImpl("sigabrt");  // before the modal popup: automation may kill the process there
     ShowRuntimeFatalPopup("a fatal internal error occurred",
                           "The process called abort while running the game or Aurora renderer.\n\n"
                           "This usually means an unimplemented function, failed renderer assertion, "
                           "or another unrecoverable runtime condition was reached.");
 
-    // Skip detailed dump if already reported by another handler
-    if (g_fatalErrorReported.load(std::memory_order_acquire)) {
-        std::fflush(stderr);
-        std::fflush(stdout);
-        std::_Exit(EXIT_FAILURE);
-    }
+    // A recovered guest fault earlier in the run also sets the reported flag; an abort after it
+    // would otherwise leave no trace, so the sigabrt log is written unconditionally.
 
-    WriteFatalLogImpl("sigabrt");
 
     std::fflush(stderr);
     std::fflush(stdout);

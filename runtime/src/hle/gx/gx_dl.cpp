@@ -1290,6 +1290,9 @@ extern "C" void GxNotifyDisplayListMemoryWrite(uint32_t addr, uint32_t size) {
 }
 
 extern "C" void GX__CallDisplayList_80172f64(uint32_t listAddr, uint32_t nbytes) {
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+    { static unsigned s_n = 0; static unsigned s_frame = 0; ++s_n; if (s_n <= 30 || s_n % 500 == 0 || nbytes > 0x100000) RT_LOG(RT_TAG_GX) << "dl call " << s_n << " addr=0x" << std::hex << listAddr << " size=0x" << nbytes << std::dec << std::endl; }
+#endif
     if (nbytes == 0 || listAddr == 0) return;
     try {
         const uint8_t* list = static_cast<const uint8_t*>(GuestToHostPtr(listAddr, nbytes));

@@ -1,4 +1,5 @@
 #include "fiber_manager.h"
+#include "hle/project_guest_addresses.h"
 #include "memory.h"
 #include "abi_bridge.h"
 #include "hle_stubs.h"
@@ -46,10 +47,10 @@ std::atomic<uint32_t> g_viRetracePendingCount{0};
 namespace {
 constexpr uint32_t kOSCurrentContextAddr = 0x800000d4u;
 constexpr uint32_t kOSRunningContextAddr = 0x800000e4u;  // OSGetCurrentThread reads this
-constexpr uint32_t kThreadQueueArrayAddr = 0x803477b0u;
-constexpr uint32_t kSchedulerPendingFlagAddr = 0x80386920u;
-constexpr uint32_t kSchedulerReschedCounterAddr = 0x8038691cu;
-constexpr uint32_t kSchedulerIdleFlagAddr = 0x80386918u;
+constexpr uint32_t kThreadQueueArrayAddr = GuestAddr::ThreadQueueArray;
+constexpr uint32_t kSchedulerPendingFlagAddr = GuestAddr::SchedulerPendingFlag;
+constexpr uint32_t kSchedulerReschedCounterAddr = GuestAddr::SchedulerReschedCounter;
+constexpr uint32_t kSchedulerIdleFlagAddr = GuestAddr::SchedulerIdleFlag;
 
 // OSThread structure offsets
 constexpr uint32_t kThreadStateOffset = 0x2C8u;

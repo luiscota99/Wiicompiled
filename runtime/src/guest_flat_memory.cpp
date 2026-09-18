@@ -620,6 +620,20 @@ void Initialize(const std::vector<RegionRequest>& regions) {
               << " regions, " << Sections().size() << " backing stores)" << std::endl;
 }
 
+#if defined(RECOMP_PROJECT_FFCC)
+// GameCube CP (0xCC000000), PE (0xCC001000) and MEM (0xCC004000) register pages. The GX HLE owns the
+// GPU; the translated SDK code that still pokes these registers (GXPoke*, __GXInitGX, GXReadDrawSync)
+// gets plain storage: reads return the last write, nothing polls them for a status change. The other
+// MMIO pages (PI, VI, DI, AI, SI, EXI) stay PAGE_NOACCESS so a missing device HLE is still reported.
+uint8_t* GcRegisterPage(uint32_t guestAddress) {
+    const uint32_t page = guestAddress & 0xFFFFF000u;
+    if (page != 0xCC000000u && page != 0xCC001000u && page != 0xCC004000u) return nullptr;
+    if (g_base == nullptr) return nullptr;
+    if (!ProtectRange(g_base + page, kHostPageSize, kProtReadWrite)) return nullptr;
+    return g_base + guestAddress;
+}
+#endif
+
 uint8_t* HostPointer(uint32_t guestAddress) {
     if (!g_initialized) return nullptr;
     for (const auto& region : MappedRegions()) {
@@ -788,6 +802,9 @@ bool HandleAccessViolation(void* faultAddress, bool isWrite) noexcept {
     //    answering zero would turn a missing device into a silent hang, so both are reported instead.
     if (IsMmio(guestAddress)) {
         g_countMmio.fetch_add(1, std::memory_order_relaxed);
+#if defined(RECOMP_PROJECT_FFCC)
+        if (GuestFlat::GcRegisterPage(guestAddress) != nullptr) return true;  // now plain storage; retry the access
+#endif
         if (IsGpuFifo(guestAddress)) {
             if (isWrite) {
                 ReportFatalGuestFault(

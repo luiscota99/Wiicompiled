@@ -1,4 +1,5 @@
 #include "memory.h"
+#include "guest_flat_memory.h"
 
 #include <algorithm>
 #include <array>
@@ -478,6 +479,8 @@ void WriteScalar(uint32_t address, T value) {
 
 } // namespace
 
+void DumpHostStackTraceForRuntimeHelper();
+
 Memory::AccessViolation::AccessViolation(uint32_t address, size_t length, std::string_view reason)
     : std::runtime_error([&]() {
           std::ostringstream oss;
@@ -487,7 +490,17 @@ Memory::AccessViolation::AccessViolation(uint32_t address, size_t length, std::s
       }()),
       address_(address),
       length_(length),
-      reason_(reason) {}
+      reason_(reason) {
+    // FFCC port diagnostic: name the host caller of a host-side violation.
+    DumpHostStackTraceForRuntimeHelper();
+    if (std::getenv("WIICOMPILED_FAIL_FAST") != nullptr) {
+        // Probe mode: the first guest fault is the finding; HLE code would otherwise catch it and go on
+        // with a leaked guest stack frame.
+        RuntimeCrash::WriteCrashArtifacts("guest_fault", what());
+        std::fflush(stderr);
+        std::abort();
+    }
+}
 
 void Memory::RefreshWritableFastPathsForExecutableRanges() {
     std::lock_guard<std::mutex> lock(RegionMutex());
@@ -625,7 +638,29 @@ namespace {
 }
 } // namespace
 
+#if defined(RECOMP_PROJECT_FFCC)
+// GameCube CP/PE/MEM registers: the checked-access slow paths use the same storage page the flat
+// mapping hands out (GuestFlat::GcRegisterPage), so both access modes see one register file.
+namespace {
+uint8_t* GcRegisterStore(uint32_t addr) { return GuestFlat::GcRegisterPage(addr); }
+template <typename T> T GcRegisterReadBE(const uint8_t* p) {
+    T v = 0;
+    for (size_t i = 0; i < sizeof(T); ++i) v = static_cast<T>((v << 8) | p[i]);
+    return v;
+}
+template <typename T> void GcRegisterWriteBE(uint8_t* p, T v) {
+    for (size_t i = sizeof(T); i-- > 0;) { p[i] = static_cast<uint8_t>(v); v = static_cast<T>(v >> 8); }
+}
+}  // namespace
+#define GC_REGISTER_READ(T) if (uint8_t* gcReg = GcRegisterStore(addr)) return GcRegisterReadBE<T>(gcReg);
+#define GC_REGISTER_WRITE(T) if (uint8_t* gcReg = GcRegisterStore(addr)) { GcRegisterWriteBE<T>(gcReg, val); return; }
+#else
+#define GC_REGISTER_READ(T)
+#define GC_REGISTER_WRITE(T)
+#endif
+
 uint8_t MemoryInline::Read8Slow(uint32_t addr) {
+    GC_REGISTER_READ(uint8_t)
     if (IsMmioAddress(addr)) {
         ThrowMmioReadBlocked(addr, sizeof(uint8_t));
     }
@@ -634,6 +669,7 @@ uint8_t MemoryInline::Read8Slow(uint32_t addr) {
 }
 
 uint16_t MemoryInline::Read16Slow(uint32_t addr) {
+    GC_REGISTER_READ(uint16_t)
     if (IsMmioAddress(addr)) {
         ThrowMmioReadBlocked(addr, sizeof(uint16_t));
     }
@@ -642,6 +678,7 @@ uint16_t MemoryInline::Read16Slow(uint32_t addr) {
 }
 
 uint32_t MemoryInline::Read32Slow(uint32_t addr) {
+    GC_REGISTER_READ(uint32_t)
     if (IsMmioAddress(addr)) {
         ThrowMmioReadBlocked(addr, sizeof(uint32_t));
     }
@@ -681,6 +718,7 @@ double MemoryInline::ReadFloat64Slow(uint32_t addr) {
 }
 
 void MemoryInline::Write8Slow(uint32_t addr, uint8_t val) {
+    GC_REGISTER_WRITE(uint8_t)
     if (IsGpuFifoAddress(addr)) {
         GX_HLE_FIFO_Write8(val);
         return;
@@ -692,6 +730,7 @@ void MemoryInline::Write8Slow(uint32_t addr, uint8_t val) {
 }
 
 void MemoryInline::Write16Slow(uint32_t addr, uint16_t val) {
+    GC_REGISTER_WRITE(uint16_t)
     if (IsGpuFifoAddress(addr)) {
         GX_HLE_FIFO_Write16(val);
         return;
@@ -703,6 +742,7 @@ void MemoryInline::Write16Slow(uint32_t addr, uint16_t val) {
 }
 
 void MemoryInline::Write32Slow(uint32_t addr, uint32_t val) {
+    GC_REGISTER_WRITE(uint32_t)
     if (IsGpuFifoAddress(addr)) {
         GX_HLE_FIFO_Write32(val);
         return;

@@ -1,6 +1,7 @@
 // SelectThread scheduler, OSWakeupThread and the OSMutex primitives.
 
 #include <cstdint>
+#include "../ffcc/ffcc_watch.h"
 #include <iostream>
 
 #include "abi_bridge.h"
@@ -129,6 +130,9 @@ extern "C" void func_801A1ED8(CpuContext* ctx);
 
 extern "C" void SelectThread_801a9c08(CpuContext* ctx)
 {
+#if defined(RECOMP_PROJECT_FFCC)
+    FfccWatch::Poll("SelectThread");
+#endif
     CpuContext* cpu = ctx ? ctx : &GetPersistentCpuContext();
     const uint32_t forceSwitch = cpu->gpr[3];
 
@@ -146,11 +150,17 @@ extern "C" void SelectThread_801a9c08(CpuContext* ctx)
     const uint32_t currentContext = ::Memory::Read32(kOSCurrentContextAddr);
     const uint32_t runningContext = ::Memory::Read32(kOSRunningContextAddr);
     
-    // Early exit if no thread system is initialized yet
-        // (both current and running contexts are 0)
+    // Early exit only if no thread system is initialized yet. Both contexts are also zero right
+        // after the running thread exits, because ExitGuestThread clears them, and that is exactly
+        // the moment a new thread has to be selected. Bailing there wedges the scheduler forever:
+        // ready threads sit in RunQueueBits and nothing ever picks them.
         if (currentContext == 0 && runningContext == 0) {
-            cpu->gpr[3] = 0;
-            return;
+            const uint32_t readyBits = ::Memory::Read32(kSchedulerPendingFlagAddr);
+            if (readyBits == 0) {
+                // Nothing to run: the run queue is genuinely empty, so this really is early boot.
+                cpu->gpr[3] = 0;
+                return;
+            }
         }
 
     if (currentContext != runningContext) {
@@ -359,11 +369,17 @@ extern "C" void SelectThread_801a9c08(CpuContext* ctx)
         // If we still don't have a current guest thread (no running context),
         // we can't do a proper fiber switch. Just return and let the caller handle it.
         if (currentGuestThread == 0) {
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+            RT_LOG(RT_TAG_OS) << "SelectThread: switch -> 0x" << std::hex << nextThread << " pc=0x" << ::Memory::Read32(nextThread + 0x198u) << " lr=0x" << ::Memory::Read32(nextThread + 0x84u) << " r1=0x" << ::Memory::Read32(nextThread + 0x04u) << " state=" << std::dec << ::Memory::Read16(nextThread + 0x2C8u) << std::endl;
+#endif
             Fiber::GuestFiberManager::SwitchToThread(nextThread, cpu);
             return;
         }
         
         // Perform the fiber switch!
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+        RT_LOG(RT_TAG_OS) << "SelectThread: switch -> 0x" << std::hex << nextThread << " pc=0x" << ::Memory::Read32(nextThread + 0x198u) << " lr=0x" << ::Memory::Read32(nextThread + 0x84u) << " r1=0x" << ::Memory::Read32(nextThread + 0x04u) << " state=" << std::dec << ::Memory::Read16(nextThread + 0x2C8u) << std::endl;
+#endif
         Fiber::GuestFiberManager::SwitchToThread(nextThread, cpu);
         // When we return here, we've been switched back
         return;
@@ -449,6 +465,9 @@ static void WakeupThreadQueue(CpuContext* ctx, bool allowImmediateReschedule)
 
 extern "C" void OSWakeupThread_HLE_801aaaa4(CpuContext* ctx)
 {
+#if defined(RECOMP_PROJECT_FFCC)
+    FfccWatch::Poll("OSWakeupThread");
+#endif
     WakeupThreadQueue(ctx, true);
 }
 

@@ -1,4 +1,5 @@
 #include "ax_internal.h"
+#include "../project_guest_addresses.h"
 
 #include "abi_bridge.h"
 #include "ax_mix_kernels.h"
@@ -68,7 +69,7 @@ void MarkDspInitialized() {
 void ResetDspTaskGlobals() {
     Memory::TryWrite32(kDspAssertPendingAddr, 0);
     Memory::TryWrite32(kDspAssertTaskAddr, 0);
-    Memory::TryWrite32(0x80386618u, 0);
+    Memory::TryWrite32(GuestAddr::DspTmpTask, 0);
     Memory::TryWrite32(kDspCurrentTaskAddr, 0);
     Memory::TryWrite32(kDspFirstTaskAddr, 0);
     Memory::TryWrite32(kDspRunningTaskAddr, 0);

@@ -324,6 +324,12 @@ extern "C" void PPCMthid2_8012e638(CpuContext* ctx)
     }
 }
 PPC_NATIVE_OVERRIDE_VOID(8012e638, PPCMthid2_8012e638, (CpuContext* ctx), (ctx));
+// FFCC entry points for the same routines. The registrations above carry Mario Kart Wii
+// addresses and are never reached on this game; without these the guest runs the retail
+// routine against hardware the runtime does not emulate. Addresses from main.elf.MAP.
+#if defined(RECOMP_PROJECT_FFCC)
+PPC_NATIVE_OVERRIDE_VOID(8017b568, PPCMthid2_8012e638, (CpuContext* ctx), (ctx));
+#endif
 
 PPC_SPR_STUB_BODY(PPCMfwpar_8012e640,
                   "PPCMfwpar called (stubbed) - Move From Write Pipe Address Register")

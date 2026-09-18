@@ -1,5 +1,7 @@
 #include "hle_stubs.h"
+#include "hle/project_guest_addresses.h"
 #include "memory.h"
+#include "runtime_log.h"
 #include "hle/controller_status_contract.h"
 #include "input_bindings.h"
 #include "wii_remote_input.h"
@@ -118,6 +120,32 @@ extern "C" uint32_t PAD__Read_HLE(uint32_t statusPtr)
 
     FillTriggersHeldByButtons(statuses);
     InputBindings::Apply(statuses);
+#if defined(RECOMP_PROJECT_FFCC)
+    // Harness input, injected at the pad level. See scripts/patch_pad_injection.py for why this does
+    // not go through the host keyboard.
+    {
+        const char* padFile = std::getenv("WIICOMPILED_PAD_FILE");
+        if (padFile != nullptr) {
+            if (std::FILE* f = std::fopen(padFile, "rb")) {
+                char buf[64] = {};
+                const size_t n = std::fread(buf, 1, sizeof(buf) - 1, f);
+                std::fclose(f);
+                buf[n] = '\0';
+                unsigned btn = 0;
+                int sx = 0, sy = 0;
+                if (std::sscanf(buf, "%x %d %d", &btn, &sx, &sy) >= 1) {
+                    statuses[0].err = PAD_ERR_NONE;
+                    statuses[0].button |= static_cast<uint16_t>(btn);
+                    if (sx != 0) statuses[0].stickX = static_cast<int8_t>(sx);
+                    if (sy != 0) statuses[0].stickY = static_cast<int8_t>(sy);
+                }
+            }
+        }
+    }
+#endif
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+    { static uint16_t s_last = 0xFFFF; static unsigned s_n = 0; ++s_n; if (statuses[0].button != s_last || s_n == 1) { s_last = statuses[0].button; RT_LOG(RT_TAG_OS) << "[pad] port0 err=" << int(statuses[0].err) << " buttons=0x" << std::hex << statuses[0].button << std::dec << " stick=" << int(statuses[0].stickX) << "," << int(statuses[0].stickY) << " (read " << s_n << ")" << std::endl; } }
+#endif
 
     try {
         for (uint32_t i = 0; i < PAD_CHANMAX; ++i) {
@@ -130,7 +158,9 @@ extern "C" uint32_t PAD__Read_HLE(uint32_t statusPtr)
 
     return rumbleMask;
 }
+#if !defined(RECOMP_PROJECT_FFCC)  // 0x801AF44C is a game function in FFCC (see projects/ffcc/recomp.yml)
 PPC_NATIVE_OVERRIDE(801AF44C, PAD__Read_HLE, uint32_t, (uint32_t statusPtr), (statusPtr));
+#endif
 
 extern "C" uint32_t PAD__Reset_HLE(uint32_t mask)
 {

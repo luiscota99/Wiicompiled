@@ -1,4 +1,6 @@
 #pragma once
+#include <cstdio>
+#include "../project_guest_addresses.h"
 
 #include "gx_stream_common.h"
 
@@ -45,6 +47,9 @@ inline void VcdHi(uint32_t value) {
 }
 
 inline void VatA(uint8_t fmt, uint32_t value) {
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+    { static int n = 0; if (n < 40) { ++n; std::fprintf(stderr, "[gx] fifo CP VAT_A fmt=%u value=0x%08X active=0x%08X" "%c", fmt, value, RecompMod::CurrentTranslatedExecutionAddress(), 10); } }
+#endif
     auto& attrs = g_hleGxState.vtxAttrFmt[fmt];
     const VtxAttrFmt oldPos = attrs[GX_VA_POS];
     const VtxAttrFmt oldNrm = attrs[GX_VA_NRM];

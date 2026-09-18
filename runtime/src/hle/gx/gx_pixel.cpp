@@ -63,6 +63,7 @@ extern "C" void GX__SetFog_801722cc(uint32_t t, float sz, float ez, float nz, fl
 }
 PPC_NATIVE_OVERRIDE_VOID(801722cc, GX__SetFog_801722cc, (uint32_t t, float sz, float ez, float nz, float fz, uint32_t cp), (t, sz, ez, nz, fz, cp));
 
+
 extern "C" void GX__SetAlphaCompare_80172088(uint32_t c0, uint32_t r0, uint32_t op, uint32_t c1, uint32_t r1) {
     g_alphaCompareValid = true;
     GXSetAlphaCompare((GXCompare)c0, (u8)r0, (GXAlphaOp)op, (GXCompare)c1, (u8)r1);

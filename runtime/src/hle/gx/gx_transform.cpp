@@ -59,7 +59,9 @@ extern "C" void GX__GetViewportv_801733e0(uint32_t oa) {
     static int lastBypassFrame = -1;
     if (lastBypassFrame != g_gxFrameCount) {
         lastBypassFrame = g_gxFrameCount;
+#if !defined(RECOMP_PROJECT_FFCC)
         AssertMkwOffscreenScreenBypass();
+#endif
     }
     if (!oa) return; for(int i=0; i<6; ++i) WriteGuestFloat(oa + i*4, g_viewportState[i]);
 }
@@ -71,9 +73,9 @@ extern "C" void GX__SetZScaleOffset_80173400(float s, float o) {
         const uint32_t gd = Memory::Read32(kGXDataPtrAddr);
         if (gd) {
             constexpr float kZ24Scale = 16777215.0f;
-            Memory::WriteFloat32(gd + 0x55Cu, kZ24Scale * o);
-            Memory::WriteFloat32(gd + 0x560u, 1.0f + kZ24Scale * s);
-            Memory::Write32(gd + 0x5FCu, Memory::Read32(gd + 0x5FCu) | 0x10000000u);
+            Memory::WriteFloat32(gd + GxOff::ZOffset, kZ24Scale * o);
+            Memory::WriteFloat32(gd + GxOff::ZScale, 1.0f + kZ24Scale * s);
+            Memory::Write32(gd + GxOff::DirtyState, Memory::Read32(gd + GxOff::DirtyState) | 0x10000000u);
         }
     } catch (...) {}
 }
@@ -95,10 +97,10 @@ PPC_NATIVE_OVERRIDE_VOID(801734e0, GX__SetScissorBoxOffset_801734e0, (int32_t xo
 extern "C" void GX__SetScissor_80173430(uint32_t l, uint32_t t, uint32_t w, uint32_t h) {
     g_scissorLeft=(int32_t)l; g_scissorTop=(int32_t)t; g_scissorWidth=(int32_t)w; g_scissorHeight=(int32_t)h;
     try { uint32_t gd=Memory::Read32(kGXDataPtrAddr); if(gd){
-        uint32_t r148=Memory::Read32(gd+0x148), r14c=Memory::Read32(gd+0x14c);
+        uint32_t r148=Memory::Read32(gd + GxOff::SuScis0), r14c=Memory::Read32(gd + GxOff::SuScis1);
         uint32_t sx=g_scissorLeft+0x156, sy=g_scissorTop+0x156, ex=sx+g_scissorWidth-1, ey=sy+g_scissorHeight-1;
-        Memory::Write32(gd+0x148, ((sx<<12)&0x7ff000u)|(sy&0x7ffu)|(r148&0xff800800u));
-        Memory::Write32(gd+0x14c, ((ex<<12)&0x7ff000u)|(ey&0x7ffu)|(r14c&0xff800800u));
+        Memory::Write32(gd + GxOff::SuScis0, ((sx<<12)&0x7ff000u)|(sy&0x7ffu)|(r148&0xff800800u));
+        Memory::Write32(gd + GxOff::SuScis1, ((ex<<12)&0x7ff000u)|(ey&0x7ffu)|(r14c&0xff800800u));
         Memory::Write16(gd+2, 0);
     } } catch(...) {}
     // No viewport replay here: aurora recomputes viewport and scissor together

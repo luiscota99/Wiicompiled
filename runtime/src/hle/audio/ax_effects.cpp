@@ -1,4 +1,5 @@
 #include "abi_bridge.h"
+#include "../project_guest_addresses.h"
 #include "isa/big_endian.h"
 #include "hle_stubs.h"
 #include "memory.h"
@@ -20,12 +21,19 @@ extern "C" void func_8012B830(CpuContext* ctx);
 namespace {
 namespace ReverbStd {
 
+#if defined(RECOMP_PROJECT_FFCC)
+// Must match the mixer's frame size: GameCube AX uses 5 ms frames (160 samples at 32 kHz).
+// Leaving this at the Wii 96 while the mixer ran 160 processed the aux buses over the wrong
+// length and the output saturated.
+constexpr uint32_t kSamplesPerFrame = 160;
+#else
 constexpr uint32_t kSamplesPerFrame = 96;
+#endif
 constexpr uint32_t kChannels = 3;
 
 // .sdata2 constants the guest function loads through r2.
-constexpr uint32_t kOneConstantAddr = 0x80388588u;   // 1.0f
-constexpr uint32_t kScaleConstantAddr = 0x8038858Cu; // 0.6f send pre-scale
+constexpr uint32_t kOneConstantAddr = GuestAddr::OneConstant;   // 1.0f
+constexpr uint32_t kScaleConstantAddr = GuestAddr::ScaleConstant; // 0.6f send pre-scale
 
 // AXFX_REVERBSTD_EXP field offsets (byte offsets into the struct in r4).
 constexpr uint32_t kFieldPreDelayCoef = 0x18;
@@ -206,8 +214,13 @@ bool BuildFrame(uint32_t buffersAddr, uint32_t stateAddr, Frame& frame) {
         }
     }
 
+#if defined(RECOMP_PROJECT_FFCC)
+    const float sendScale = 0.6f;  // the Mario Kart build reads these from its .sdata2
+    const float one = 1.0f;
+#else
     const float sendScale = Memory::ReadFloat32(kScaleConstantAddr);
     const float one = Memory::ReadFloat32(kOneConstantAddr);
+#endif
     frame.damping = Memory::ReadFloat32(stateAddr + kFieldDamping);
     frame.oneMinusDamping = one - frame.damping;
     frame.dryScale = sendScale * Memory::ReadFloat32(stateAddr + kFieldDryPreScale);

@@ -60,7 +60,9 @@ extern "C" int32_t WPADGetStatus_HLE()
     // Reading r3 here would leak a caller's stale register value into the result.
     return g_state.contract.GetLibraryStatus();
 }
+#if !defined(RECOMP_PROJECT_FFCC)  // 0x801BF64C is a game function in FFCC (see projects/ffcc/recomp.yml)
 PPC_NATIVE_OVERRIDE(801BF64C, WPADGetStatus_HLE, int32_t, (), ());
+#endif
 
 extern "C" uint32_t WPADGetDpdSensitivity_HLE()
 {

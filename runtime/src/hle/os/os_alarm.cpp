@@ -93,13 +93,38 @@ void RunDeferredReschedule(CpuContext* cpu)
     SelectThread_801a9c08(cpu);
 }
 
+// Address of the OSAlarm.c static {head, tail} queue.
+//
+// Deriving this from r13 assumes the small-data pointer holds one fixed value for every context that
+// reaches here. When it does not, the base slides across guest memory: the sentinel check then reads
+// four equal words out of filled heap, "resets" the queue by writing zeros into unrelated memory, and
+// does it again on the next call forever. Use the absolute address from the symbol table when the
+// project supplies one; fall back to the derivation for projects that do not.
+uint32_t AlarmQueueBase(CpuContext* cpu)
+{
+    if constexpr (GuestAddr::AlarmQueue != 0u) {
+        return GuestAddr::AlarmQueue;
+    } else {
+        return AlarmQueueBase(cpu);
+    }
+}
+
 void SanitizeAlarmQueue(CpuContext* cpu)
 {
     if (!cpu) {
         return;
     }
 
-    const uint32_t queueBase = cpu->gpr[13] - kAlarmQueueOffsetFromR13;
+        {
+            static bool s_reported = false;
+            if (!s_reported) {
+                s_reported = true;
+                RT_LOG(RT_TAG_OS) << "alarm queue base: absolute=0x" << std::hex << GuestAddr::AlarmQueue
+                                  << " r13-derived=0x" << (cpu->gpr[13] - kAlarmQueueOffsetFromR13)
+                                  << " r13=0x" << cpu->gpr[13] << std::dec << std::endl;
+            }
+        }
+    const uint32_t queueBase = AlarmQueueBase(cpu);
     try {
         const uint32_t head = ::Memory::Read32(queueBase);
         const uint32_t tail = ::Memory::Read32(queueBase + 4u);
@@ -109,15 +134,42 @@ void SanitizeAlarmQueue(CpuContext* cpu)
 
         const uint32_t prev = ::Memory::Read32(head + kAlarmPrevOffset);
         const uint32_t next = ::Memory::Read32(head + kAlarmNextOffset);
+#if defined(RECOMP_PROJECT_FFCC) && FFCC_DEBUG_LOGS
+        { static int n = 0; auto bad = [](uint32_t a) { return a != 0 && (a < 0x80000000u || a >= 0x81800000u); };
+          if (n < 20 && (bad(head) || bad(prev) || bad(next))) { ++n; RT_LOG(RT_TAG_OS) << "alarm queue corrupt: head=0x" << std::hex << head << " prev=0x" << prev << " next=0x" << next << " tail=0x" << ::Memory::Read32(queueBase + 4) << std::dec << std::endl; } }
+#endif
 
         // Some builds initialize the alarm list as a self-referential node.
         // Treat that as an empty list so InsertAlarm doesn't spin forever.
         if (next == head && prev == head && head == tail) {
-            RT_LOG(RT_TAG_OS) << "Alarm queue sentinel detected; resetting to empty before InsertAlarm" << std::endl;
-            ::Memory::Write32(queueBase, 0);
-            ::Memory::Write32(queueBase + 4u, 0);
+            {
+                static unsigned s_diag = 0;
+                if (s_diag < 20u) {
+                    ++s_diag;
+                    RT_LOG(RT_TAG_OS) << "alarm diag: sentinel head=0x" << std::hex << head
+                                      << " prev=0x" << prev << " next=0x" << next
+                                      << " tail=0x" << tail
+                                      << " handler=0x" << ::Memory::Read32(head)
+                                      << " r13=0x" << cpu->gpr[13]
+                                      << " lr=0x" << cpu->lr << " pc=0x" << cpu->pc
+                                      << std::dec << std::endl;
+                }
+            }
+            // Capped: this fired about 15 million times in one session and produced a 4 GB log.
+            static unsigned s_sentinelLogs = 0;
+            if (s_sentinelLogs < 20u) {
+                ++s_sentinelLogs;
+                RT_LOG(RT_TAG_OS) << "Alarm queue sentinel detected; resetting to empty before InsertAlarm"
+                                  << (s_sentinelLogs == 20u ? " (further occurrences suppressed)" : "")
+                                  << std::endl;
+            }
+            // Repair into a valid one-element list instead of discarding it. Zeroing the queue
+            // threw the alarm away, so anything waiting on it waited forever; keeping the node lets
+            // the pump retire it normally.
             ::Memory::Write32(head + kAlarmPrevOffset, 0);
             ::Memory::Write32(head + kAlarmNextOffset, 0);
+            ::Memory::Write32(queueBase, head);
+            ::Memory::Write32(queueBase + 4u, head);
         }
     } catch (const ::Memory::AccessViolation& e) {
         LogMemoryError(RT_TAG_OS, "SanitizeAlarmQueue", e);
@@ -150,12 +202,22 @@ bool ProcessAlarmQueue(CpuContext* cpu, int maxToProcess)
     }
 
     if (g_alarmProcessDepth != 0) {
+        static unsigned s_diagDepth = 0;
+        if (s_diagDepth < 10u) {
+            ++s_diagDepth;
+            RT_LOG(RT_TAG_OS) << "alarm diag: pump skipped, recursion depth nonzero" << std::endl;
+        }
         return false;
     }
 
     EnsureSda1Base(cpu);
 
     if (cpu->gpr[13] == 0) {
+        static unsigned s_diagNoSda = 0;
+        if (s_diagNoSda < 10u) {
+            ++s_diagNoSda;
+            RT_LOG(RT_TAG_OS) << "alarm diag: pump skipped, r13 is zero" << std::endl;
+        }
         return false;
     }
 
@@ -168,7 +230,7 @@ bool ProcessAlarmQueue(CpuContext* cpu, int maxToProcess)
     {
         AlarmProcessScope alarmProcessScope;
         SanitizeAlarmQueue(cpu);
-        const uint32_t queueBase = cpu->gpr[13] - kAlarmQueueOffsetFromR13;
+        const uint32_t queueBase = AlarmQueueBase(cpu);
 
         try {
             for (int i = 0; i < maxToProcess; ++i) {
@@ -188,7 +250,12 @@ bool ProcessAlarmQueue(CpuContext* cpu, int maxToProcess)
 
                 handledAny = true;
 
-                const uint32_t next = ::Memory::Read32(alarm + kAlarmNextOffset);
+                const uint32_t rawNext = ::Memory::Read32(alarm + kAlarmNextOffset);
+                // A node whose next points at itself is the end of the list, not a successor. Writing
+                // it back as the new head left the alarm linked while its handler was cleared, which
+                // is how the dead-alarm cycle behind the New Game hang sustained itself.
+                const uint32_t selfLoopSafeNext = (rawNext == alarm) ? 0u : rawNext;
+                const uint32_t next = selfLoopSafeNext;
 
                 ::Memory::Write32(queueBase, next);
                 if (next == 0) {
@@ -281,6 +348,16 @@ extern "C" void OSSetAlarm_HLE_801a0870(CpuContext* ctx)
 
     const int32_t level = OS__DisableInterrupts_801a65ac();
     SanitizeAlarmQueue(cpu);
+    {
+        static unsigned s_diagCaller = 0;
+        if (s_diagCaller < 20u) {
+            ++s_diagCaller;
+            RT_LOG(RT_TAG_OS) << "alarm caller: lr=0x" << std::hex << cpu->lr
+                              << " pc=0x" << cpu->pc
+                              << " alarm=0x" << alarm
+                              << " r3=0x" << cpu->gpr[3] << std::dec << std::endl;
+        }
+    }
 
     uint64_t now = 0;
     try {
@@ -305,8 +382,25 @@ extern "C" void OSSetAlarm_HLE_801a0870(CpuContext* ctx)
         return;
     }
 
-    const uint32_t queueBase = cpu->gpr[13] - kAlarmQueueOffsetFromR13;
+    const uint32_t queueBase = AlarmQueueBase(cpu);
     try {
+        // Setting an alarm that is still linked must re-arm it, not link it twice. Without this the
+        // walk below starts at the alarm itself, ends with prev == alarm, and links the node to
+        // itself. The SDK relies on ASSERTLINE(251, alarm->handler == 0) here, which does nothing in
+        // a release build, so the guest can and does re-arm a live alarm.
+        {
+            const uint32_t curHead = ::Memory::Read32(queueBase);
+            const uint32_t curTail = ::Memory::Read32(queueBase + 4u);
+            if (curHead == alarm) {
+                const uint32_t after = ::Memory::Read32(alarm + kAlarmNextOffset);
+                ::Memory::Write32(queueBase, (after == alarm) ? 0u : after);
+            }
+            if (curTail == alarm) {
+                const uint32_t before = ::Memory::Read32(alarm + kAlarmPrevOffset);
+                ::Memory::Write32(queueBase + 4u, (before == alarm) ? 0u : before);
+            }
+        }
+
         const uint32_t head = ::Memory::Read32(queueBase);
         if (head == 0) {
             ::Memory::Write32(queueBase, alarm);

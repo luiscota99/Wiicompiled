@@ -178,6 +178,13 @@ void schedule(void* dest, uint32_t width, uint32_t height, GXTexFmt format, Text
     return;
   }
   if (!supports_format(format)) {
+#if defined(RECOMP_PROJECT_FFCC)
+    // FFCC copies the depth buffer as GX_TF_Z8 (0x11) for shading effects; the RAM download has no
+    // encoder for it yet. Keep the GPU-side copy and skip the CPU-visible download.
+    static unsigned s_warned = 0;
+    if (s_warned < 4) { ++s_warned; Log.warn("Skipping CPU-visible EFB copy download: unsupported format 0x{:x}", static_cast<unsigned>(format)); }
+    return;
+#endif
     Log.fatal("Unsupported CPU-visible EFB copy format 0x{:x}", static_cast<unsigned>(format));
   }
 
