@@ -151,6 +151,10 @@ recorded with `WIICOMPILED_GBA_TRACE`.
 - **Emulated client pacing.** The clients run a few frames ahead of the wall clock under load (capped);
   harmless, but it is on the list to trim.
 - **PAL only.** Other regions are untested and need their own addresses.
+- **Addressed dialogue choices.** A question addressed to a player by name ("BBB, how do you reply?")
+  is answered only by that player's controller and nothing tells the others; the game has always
+  worked this way, but on one screen with several pads it reads as a hang. A hint of who is being
+  asked is on the wish list.
 
 ## Join in
 
