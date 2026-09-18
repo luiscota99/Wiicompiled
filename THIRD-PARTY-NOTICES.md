@@ -26,6 +26,15 @@ Aurora itself vendors:
   (shagkur) and Dave Murphy (WinterMute). `aurora-main/lib/card/SRAM.hpp`.
   Source: <https://github.com/devkitPro/libogc>
 
+### mGBA - MPL-2.0
+
+Copyright (c) Jeffrey Pfau and contributors.
+Source: <https://github.com/mgba-emu/mgba> - git submodule at `third_party/mgba` (pinned commit in this
+repository), license text at `third_party/mgba/LICENSE`. Built as a static library by
+`scripts/ffcc/build_libmgba.py` and linked into the Final Fantasy Crystal Chronicles runtime to emulate
+each player's Game Boy Advance. mGBA is used unmodified; the Mozilla Public License 2.0 applies to its
+files, whose source is available at the upstream repository at the pinned commit.
+
 ### Dolphin Emulator data files - GPL-2.0-or-later
 
 Copyright (c) 2003+ Dolphin Emulator Project.
@@ -198,6 +207,12 @@ Not code, but the documentation this project depends on:
 - [Retro Rewind](https://wiki.tockdom.com/wiki/Retro_Rewind) by ZPL - the mod distribution this
   project can build as a static profile. No Retro Rewind content is redistributed here; users
   supply their own copy.
+
+- [FFCC-Decomp](https://github.com/zcanann/FFCC-Decomp) by zcanann and contributors (CC0 1.0) - the
+  decompilation of Final Fantasy Crystal Chronicles (PAL). Its symbol map is included at
+  `projects/ffcc/MAP.txt`; its source was the reference for the handheld link protocol and menus.
+- [Dolphin Emulator](https://github.com/dolphin-emu/dolphin) - reference for the GameCube-GBA JoyBus
+  link behaviour and its integrated GBA design (no Dolphin GBA code is included).
 
 ---
 

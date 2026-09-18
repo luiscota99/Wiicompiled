@@ -131,6 +131,14 @@ WiiCompiled, Wheel Wizard, Retro rewind and other related projects are developed
 rules. What applies here does not automatically apply there,
 and vice versa. Check each project's own CONTRIBUTING and README files.
 
+## Final Fantasy Crystal Chronicles (GameCube, PAL)
+
+This fork also runs the PAL GameCube release of Final Fantasy Crystal Chronicles (`GCCP01`),
+including its multiplayer mode: every player's Game Boy Advance is an emulated handheld running the
+game's own client program, drawn in the corners of the screen, with up to four players and two of
+them on one keyboard. You need your own dumped disc; nothing from the game ships here. See
+[`docs/ffcc.md`](docs/ffcc.md) for the build, configuration and controls.
+
 ## Retro Rewind
 
 [Retro Rewind](https://wiki.tockdom.com/wiki/Retro_Rewind), ZPL's Mario Kart Wii mod distribution,
@@ -220,6 +228,12 @@ All translated output is verified against real hardware behavior and most import
   distribution this project supports.
 - **[Wheel Wizard](https://github.com/TeamWheelWizard/WheelWizard)** - the mod manager this
   project integrates with as a launch backend.
+- **[mGBA](https://mgba.io)** by endrift and contributors - emulates each player's Game Boy Advance
+  for the Final Fantasy Crystal Chronicles port and provides the JoyBus link the game's SDK calls
+  are mapped onto. MPL-2.0.
+- **[FFCC-Decomp](https://github.com/zcanann/FFCC-Decomp)** by zcanann and contributors - the
+  decompilation of Final Fantasy Crystal Chronicles (CC0), the knowledge base for that game's
+  handheld link protocol, menus and symbol map.
 - Everyone in the static recompilation community.
 
 Bundled third-party components and their licenses live in
