@@ -40,7 +40,8 @@ Known limits:
 1. Build the translator (see the main README).
 2. Put your `main.dol` at `projects/ffcc/main.dol`. Its SHA-256 is checked against
    `projects/ffcc/recomp.yml`.
-3. Translate and emit the build graph:
+3. Translate and emit the build graph (the translator targets .NET 8; with only a newer runtime installed,
+   set `DOTNET_ROLL_FORWARD=Major` first):
 
    ```
    dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll translate-recursive 0x80003154 --project projects/ffcc/recomp.yml --threads 8 --output-metadata generated_ffcc/base_translation_output.json --prune-stale
@@ -80,6 +81,38 @@ Environment variables for testing: `WIICOMPILED_FAKE_GBA=0,1,2,3` overrides the 
 `WIICOMPILED_GBA=fake` uses the hand-made screens instead of the emulated client,
 `WIICOMPILED_GBA_DIRECT=0` disables the hybrid input, `WIICOMPILED_GBA_TRACE=<file>` records every
 word exchanged with the clients (see below).
+
+### Environment variables
+
+All optional; the config file covers normal use.
+
+| Variable | Effect |
+| --- | --- |
+| `WIICOMPILED_FAKE_GBA=0,1,2,3` | Port list of emulated handhelds; overrides `[gba] players`. |
+| `WIICOMPILED_GBA=fake` | Hand-made handheld screens instead of the emulated client (no mGBA needed). |
+| `WIICOMPILED_GBA_DIRECT=0` | Disable the hybrid input (client keys only through the emulated handheld). |
+| `WIICOMPILED_GBA_HOSTBLIT=1` | Draw the handheld screens through the host overlay instead of in-game GX. |
+| `WIICOMPILED_GBA_TRACE=<file>` | Record every word exchanged with the clients (replay with the harness). |
+| `WIICOMPILED_CHEATS=god,dmg8` | Test cheats (invulnerability, damage multiplier). |
+| `WIICOMPILED_STALL_SECONDS=<n>` | Abort with a stack dump when the guest makes no progress for n seconds. |
+| `WIICOMPILED_WATCH=0xADDR,...` | Log writes to guest addresses. |
+| `WIICOMPILED_STATS=1`, `FFCC_DEBUG_LOGS=1` | Extra runtime statistics and debug logging. |
+| `WIICOMPILED_AUDIO_DUMP`, `WIICOMPILED_AX_VOLWB` | Audio debugging. |
+| `WIICOMPILED_PAD_FILE`, `WIICOMPILED_SHOT_DIR`, `WIICOMPILED_NO_POPUP`, `WIICOMPILED_FAIL_FAST` | Automation: scripted pad input, frame captures, no dialogs, fail fast. |
+
+## Adapting the runtime to another game
+
+Everything game-specific is either in the project manifest or behind the `RECOMP_PROJECT_FFCC` compile
+flag:
+
+- `projects/<game>/recomp.yml`: memory layout, DOL hash, entry points, hooks.
+- `runtime/src/hle/project_guest_addresses.h`: the SDK globals and callbacks the HLE needs, one block per
+  project. Add a `RECOMP_PROJECT_<GAME>` block with your game's addresses (from a symbol map or a
+  decompilation) and select it with `-DCMAKE_CXX_FLAGS=-DRECOMP_PROJECT_<GAME>=1`.
+- `runtime/src/hle/ffcc/`: FFCC-only modules (the GBA link, menus, cheats); a new game gets its own
+  directory. Game function addresses used by those modules live at the top of each file.
+- Generic SDK changes made for the GameCube (OS, GX, audio, DVD, VI) are guarded by the project flag
+  where they differ from the Wii behaviour, so the Mario Kart build is unchanged.
 
 ## Playing multiplayer
 
