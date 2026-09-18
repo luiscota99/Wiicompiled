@@ -111,6 +111,26 @@ Planned, in order:
 Bug reports and pull requests are welcome; include the runtime log and, for link problems, a trace
 recorded with `WIICOMPILED_GBA_TRACE`.
 
+## Known issues
+
+- **Rendering.** The screen deformation effect used by some attacks and spells draws as a square;
+  some world-map effects draw as blobs; a few scenes are lit black where they should not be. These
+  are host renderer gaps, not game logic; a Dolphin capture of the same scene is the reference.
+- **Frame rate.** The PAL game renders 25 frames per second by design (one frame per two retraces), and
+  the handheld screens refresh at that rate even though the emulated clients run at 60.
+- **Rare early exit.** In a small number of launches the process has ended silently within the first
+  minute, with no fault text or stall dump. Unexplained; if it happens to you, keep the runtime log
+  and open an issue.
+- **First start is slow.** The shader pipeline cache is built on first launch (about 15 to 20 seconds
+  before the title appears); later starts are quick.
+- **Pause.** The handheld client shows its PAUSE card and ignores input while the game is paused, as
+  on hardware; the client's menus are used during play.
+- **Keyboard port 2.** Port 2 has no default keyboard set (it is expected to have a gamepad); assign
+  one in the F10 settings bar if you need it.
+- **Emulated client pacing.** The clients run a few frames ahead of the wall clock under load (capped);
+  harmless, but it is on the list to trim.
+- **PAL only.** Other regions are untested and need their own addresses.
+
 ## Help wanted
 
 This is one person's port, built on other people's foundations, and there is plenty left that a
