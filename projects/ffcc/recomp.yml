@@ -42,7 +42,9 @@ runtime:
     - runtime/src/hle/ffcc
 
 output:
-  root: generated_ffcc
+  # The runtime's cmake and the sources spell translator output as generated/<file>, the same
+  # directory upstream uses; keep one project checked out per clone.
+  root: generated
   functions: functions
   runtime_config: RuntimeConfig.h
   data_initializer: data_sections_init.cpp

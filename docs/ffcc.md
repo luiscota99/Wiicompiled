@@ -40,12 +40,14 @@ Known limits:
 1. Build the translator (see the main README).
 2. Put your `main.dol` at `projects/ffcc/main.dol`. Its SHA-256 is checked against
    `projects/ffcc/recomp.yml`.
-3. Translate and emit the build graph (the translator targets .NET 8; with only a newer runtime installed,
-   set `DOTNET_ROLL_FORWARD=Major` first):
+3. Translate, generate the data initialiser and emit the build graph (the translator targets .NET 8;
+   with only a newer runtime installed, set `DOTNET_ROLL_FORWARD=Major` first). Output goes to
+   `generated/`, which is git-ignored:
 
    ```
-   dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll translate-recursive 0x80003154 --project projects/ffcc/recomp.yml --threads 8 --output-metadata generated_ffcc/base_translation_output.json --prune-stale
-   dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll emit-build-shards --project projects/ffcc/recomp.yml --out generated_ffcc/build_shards
+   dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll translate-recursive 0x80003154 --project projects/ffcc/recomp.yml --threads 8 --output-metadata generated/base_translation_output.json --prune-stale
+   dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll generate-data-init --project projects/ffcc/recomp.yml
+   dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll emit-build-shards --project projects/ffcc/recomp.yml --out generated/build_shards
    ```
 
 4. Build mGBA as a static library (once):
@@ -54,19 +56,30 @@ Known limits:
    python scripts/ffcc/build_libmgba.py --toolchain <path to llvm-mingw/bin>
    ```
 
-5. Configure and build the runtime with the FFCC project flag and the shard manifest:
+5. Configure and build the runtime with the FFCC project flag:
 
    ```
-   cmake -G Ninja -S . -B build-ffcc -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-DRECOMP_PROJECT_FFCC=1 -DMKW_TRANSLATED_SHARD_MANIFEST=<repo>/generated_ffcc/build_shards/shards.cmake
+   cmake -G Ninja -S runtime -B build-ffcc -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=<llvm-mingw>/bin/clang.exe -DCMAKE_CXX_COMPILER=<llvm-mingw>/bin/clang++.exe -DCMAKE_RC_COMPILER=<llvm-mingw>/bin/llvm-windres.exe -DCMAKE_CXX_FLAGS=-DRECOMP_PROJECT_FFCC=1
    cmake --build build-ffcc --target WiiCompiled --parallel 8
    ```
 
+   The resource compiler must be LLVM-MinGW's `llvm-windres` (the toolchain's default is not found by cmake).
+   On Windows, cmake also needs the C++/WinRT headers of a Windows SDK
+   (`-DMKW_CPPWINRT_INCLUDE_DIR="C:/Program Files (x86)/Windows Kits/10/Include/<version>/cppwinrt"`).
    Re-run the translate step whenever a native override is added or removed (a new hooked
    address changes the translation).
 
 ## Configuration
 
-`build-ffcc/UserData/Config.toml`:
+The runtime keeps its user data (config, saves, caches, logs) in `%LOCALAPPDATA%\WiiCompiled` unless an
+empty file named `portable.txt` sits next to `WiiCompiled.exe`, in which case everything lives in a
+`UserData` folder beside it. For a build tree, create the marker once:
+
+```
+type nul > build-ffcc\portable.txt
+```
+
+Then edit `build-ffcc/UserData/Config.toml` (created on first start, or write it yourself):
 
 ```toml
 [paths]
