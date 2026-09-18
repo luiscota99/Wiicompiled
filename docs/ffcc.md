@@ -10,6 +10,18 @@ translator reads your `main.dol`, the runtime reads your extracted disc files, a
 client program is uploaded by the game itself from your disc at run time, exactly as it would be
 to a real GBA.
 
+## Screenshots
+
+| Character creation on the handheld clients | Dungeon start: one player on the command list, the other in the hub |
+| --- | --- |
+| ![creation](media/ffcc_creation.jpg) | ![dungeon](media/ffcc_dungeon_prompt.jpg) |
+
+| Client hub menu | Combat |
+| --- | --- |
+| ![hub](media/ffcc_hub_menu.jpg) | ![combat](media/ffcc_combat.jpg) |
+
+Videos (from a two-player session): [character creation](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation.mp4), [dungeon start, client menus and combat](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus.mp4); GIF versions: [creation](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation_small.gif), [dungeon](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus_small.gif).
+
 ## Status
 
 Working:

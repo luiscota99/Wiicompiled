@@ -139,6 +139,8 @@ game's own client program, drawn in the corners of the screen, with up to four p
 them on one keyboard. You need your own dumped disc; nothing from the game ships here. See
 [`docs/ffcc.md`](docs/ffcc.md) for the build, configuration and controls.
 
+![Final Fantasy Crystal Chronicles: dungeon start with two handheld clients](docs/media/ffcc_dungeon_prompt.jpg)
+
 ## Retro Rewind
 
 [Retro Rewind](https://wiki.tockdom.com/wiki/Retro_Rewind), ZPL's Mario Kart Wii mod distribution,
