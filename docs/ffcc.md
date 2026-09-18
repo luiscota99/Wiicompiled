@@ -6,7 +6,7 @@ which on real hardware needs one Game Boy Advance per player. Here every player'
 emulated GBA running the game's own client program, drawn in the corners of the screen.
 
 Nothing from the game ships with this repository. You need your own dumped PAL disc; the
-translator reads your `main.dol`, the runtime reads your extracted disc files, and the handheld
+translator reads the executable inside your disc, the runtime reads your extracted disc files, and the handheld
 client program is uploaded by the game itself from your disc at run time, exactly as it would be
 to a real GBA.
 
@@ -45,14 +45,15 @@ Known limits:
 - Everything in the main [README](../README.md): .NET 8 SDK, CMake, Ninja, LLVM-MinGW.
 - Your own PAL disc image of Final Fantasy Crystal Chronicles (`GCCP01`) as a plain .iso/.gcm.
   `scripts/ffcc/extract_disc.py` extracts it into the folder layout the runtime reads (`sys/` and
-  `files/`, the same as Dolphin's Extract Entire Disc) and copies `main.dol` where the translator
-  wants it. Compressed images (RVZ, GCZ, CISO) must be converted to ISO first.
+  `files/`, the same as Dolphin's Extract Entire Disc) and puts the game executable inside it where the
+  translator wants it (`projects/ffcc/main.dol`). Compressed images (RVZ, GCZ, CISO) must be converted to ISO first.
 - The mGBA submodule: `git submodule update --init third_party/mgba`.
 
 ## Build
 
 1. Build the translator (see the main README).
-2. Extract the disc and place the DOL (its SHA-256 is checked against `projects/ffcc/recomp.yml`):
+2. Extract the disc. The `--dol` option drops the game executable inside the disc at the path the
+   translator reads (its SHA-256 is checked against `projects/ffcc/recomp.yml`):
 
    ```
    python scripts/ffcc/extract_disc.py <game.iso> <disc folder> --dol projects/ffcc/main.dol

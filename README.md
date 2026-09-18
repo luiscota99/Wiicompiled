@@ -22,8 +22,8 @@ Full videos: [character creation](https://github.com/luiscota99/Wiicompiled/rele
 ## Quick start
 
 **You need:** your own dumped PAL disc image of Final Fantasy Crystal Chronicles (`GCCP01`, a plain
-.iso/.gcm; convert RVZ/GCZ/CISO back to ISO with Dolphin). The extractor below pulls out the files and
-the `main.dol` for you. Tools: .NET 8 SDK (or a newer one with
+.iso/.gcm; convert RVZ/GCZ/CISO back to ISO with Dolphin). That is the only game input: the extract step
+below takes everything else from it. Tools: .NET 8 SDK (or a newer one with
 `DOTNET_ROLL_FORWARD=Major`), CMake, Ninja, LLVM-MinGW, Python 3, and on Windows a Windows SDK for the
 C++/WinRT headers. Nothing from the game is in this repository.
 
@@ -32,7 +32,7 @@ C++/WinRT headers. Nothing from the game is in this repository.
 ```
 git submodule update --init third_party/mgba
 dotnet build translator/Translator.sln -c Release
-python scripts/ffcc/extract_disc.py <your game.iso> <disc folder> --dol projects/ffcc/main.dol
+python scripts/ffcc/extract_disc.py <your game.iso> <disc folder> --dol projects/ffcc/main.dol   # unpacks the disc; the game executable inside it goes to projects/ffcc for the translator
 dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll translate-recursive 0x80003154 --project projects/ffcc/recomp.yml --threads 8 --output-metadata generated/base_translation_output.json --prune-stale
 dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll generate-data-init --project projects/ffcc/recomp.yml
 dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll emit-build-shards --project projects/ffcc/recomp.yml --out generated/build_shards
@@ -99,7 +99,7 @@ Contributions follow the same approach; see [`CONTRIBUTING.md`](CONTRIBUTING.md)
   the emulated client; nothing was accepted on the model's word alone. Commits carry a co-author
   trailer and this notice.
 - **Game data.** None is included. You need your own dumped PAL disc; the translator reads your
-  `main.dol` (its SHA-256 is checked), the runtime reads your extracted disc, and the handheld client
+  disc's executable (its SHA-256 is checked), the runtime reads your extracted disc, and the handheld client
   program is uploaded by the game itself from that disc at run time. Do not ask where to get the game.
 - **Not affiliated** with Square Enix, Nintendo, or the authors of the projects credited below.
   Final Fantasy Crystal Chronicles is a trademark of Square Enix; GameCube and Game Boy Advance are
