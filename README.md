@@ -21,8 +21,9 @@ Full videos: [character creation](https://github.com/luiscota99/Wiicompiled/rele
 
 ## Quick start
 
-**You need:** your own dumped PAL disc of Final Fantasy Crystal Chronicles (`GCCP01`), extracted to a
-folder (it contains `dvd/`), and its `main.dol`. Tools: .NET 8 SDK (or a newer one with
+**You need:** your own dumped PAL disc image of Final Fantasy Crystal Chronicles (`GCCP01`, a plain
+.iso/.gcm; convert RVZ/GCZ/CISO back to ISO with Dolphin). The extractor below pulls out the files and
+the `main.dol` for you. Tools: .NET 8 SDK (or a newer one with
 `DOTNET_ROLL_FORWARD=Major`), CMake, Ninja, LLVM-MinGW, Python 3, and on Windows a Windows SDK for the
 C++/WinRT headers. Nothing from the game is in this repository.
 
@@ -31,7 +32,7 @@ C++/WinRT headers. Nothing from the game is in this repository.
 ```
 git submodule update --init third_party/mgba
 dotnet build translator/Translator.sln -c Release
-copy <your main.dol> projects\ffcc\main.dol
+python scripts/ffcc/extract_disc.py <your game.iso> <disc folder> --dol projects/ffcc/main.dol
 dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll translate-recursive 0x80003154 --project projects/ffcc/recomp.yml --threads 8 --output-metadata generated/base_translation_output.json --prune-stale
 dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll generate-data-init --project projects/ffcc/recomp.yml
 dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll emit-build-shards --project projects/ffcc/recomp.yml --out generated/build_shards
@@ -44,7 +45,7 @@ cmake --build build-ffcc --target WiiCompiled --parallel 8
 
 ```toml
 [paths]
-dvd_root = "<folder that contains dvd/>"
+dvd_root = "<disc folder from the extract step>"
 
 [gba]
 players = 2   # 1-4

@@ -43,15 +43,22 @@ Known limits:
 ## Requirements
 
 - Everything in the main [README](../README.md): .NET 8 SDK, CMake, Ninja, LLVM-MinGW.
-- Your own PAL disc image of Final Fantasy Crystal Chronicles (`GCCP01`), extracted to a folder
-  (a `dvd/` tree with `gba/ffcc_cli.bin` inside it) and its `main.dol`.
+- Your own PAL disc image of Final Fantasy Crystal Chronicles (`GCCP01`) as a plain .iso/.gcm.
+  `scripts/ffcc/extract_disc.py` extracts it into the folder layout the runtime reads (`sys/` and
+  `files/`, the same as Dolphin's Extract Entire Disc) and copies `main.dol` where the translator
+  wants it. Compressed images (RVZ, GCZ, CISO) must be converted to ISO first.
 - The mGBA submodule: `git submodule update --init third_party/mgba`.
 
 ## Build
 
 1. Build the translator (see the main README).
-2. Put your `main.dol` at `projects/ffcc/main.dol`. Its SHA-256 is checked against
-   `projects/ffcc/recomp.yml`.
+2. Extract the disc and place the DOL (its SHA-256 is checked against `projects/ffcc/recomp.yml`):
+
+   ```
+   python scripts/ffcc/extract_disc.py <game.iso> <disc folder> --dol projects/ffcc/main.dol
+   ```
+
+   The disc folder is what `[paths] dvd_root` points at in the configuration below.
 3. Translate, generate the data initialiser and emit the build graph (the translator targets .NET 8;
    with only a newer runtime installed, set `DOTNET_ROLL_FORWARD=Major` first). Output goes to
    `generated/`, which is git-ignored:
@@ -95,7 +102,7 @@ Then edit `build-ffcc/UserData/Config.toml` (created on first start, or write it
 
 ```toml
 [paths]
-dvd_root = "<folder holding your extracted disc, the one that contains dvd/>"
+dvd_root = "<disc folder from the extract step>"
 
 [gba]
 # Players on emulated handheld clients (1-4): ports 1..n. Default 2.
