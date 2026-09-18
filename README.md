@@ -152,23 +152,27 @@ recorded with `WIICOMPILED_GBA_TRACE`.
   harmless, but it is on the list to trim.
 - **PAL only.** Other regions are untested and need their own addresses.
 
-## Help wanted
+## Join in
 
-This is one person's port, built on other people's foundations, and there is plenty left that a
-second pair of hands would move faster than the first:
+Crystal Chronicles' multiplayer was a couch game with a hardware wall around it, and most of the people
+who love it never got to play it the way it was meant to be played. This port takes the wall down. The
+idea is a community around exactly that: playing this game fully, on today's machines, with friends,
+and making it better than the original constraints allowed.
 
-- **Testing on other machines.** Different GPUs and drivers, different controllers, four real
-  gamepads, long sessions. A clean clone built from the quick start is the most useful report.
-- **Rendering.** A few scenes still draw wrong (lighting, world-map effects, one deformation). The
-  fastest way to fix them is a Dolphin reference capture of the same scene next to ours.
-- **The native link layer.** The plan above; the game's entry points, the protocol notes and the
-  replay harness are in the tree. Someone who enjoys protocol work could take this on.
-- **Other games, other regions.** The per-game address header and the project manifest are the
-  whole recipe for pointing the runtime at another GameCube title or another FFCC region.
-- **Documentation and setup.** Anything that made your first build harder than the quick start says.
+There is room for every kind of interest:
 
-Open an issue with what you tried and the runtime log, or a pull request against `ffcc-port`. Small,
-verified changes are easier to take than large ones; say how you tested.
+- **Players.** Run it, play it with friends, and say what feels wrong. Different machines, controllers
+  and long sessions find things one developer never will.
+- **The picture.** A few scenes still draw wrong; a Dolphin capture of the same scene beside ours is
+  usually enough to fix one.
+- **The handheld link.** The next step is a native link layer behind the game's own entry points; the
+  protocol notes and the replay harness are in the tree for anyone who likes that kind of work.
+- **Beyond hardware.** Things the original could not do: menus while paused, higher refresh for the
+  handheld screens, quality-of-life the GBA link made impossible. Ideas welcome in Discussions.
+- **Other regions and other games.** The per-game manifest and address header are the recipe.
+
+Issues and pull requests against `ffcc-port` are open; Discussions is the place for everything else.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how changes are verified here.
 
 Everything below this line is the upstream WiiCompiled README (Mario Kart Wii), which this fork
 builds on and keeps intact; its build instructions, FAQ and licence apply here too.
