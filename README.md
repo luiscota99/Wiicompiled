@@ -19,6 +19,44 @@ players included, all remappable in the F10 settings bar). You need your own dum
 Full videos: [character creation](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation.mp4) and
 [dungeon start, menus and combat](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus.mp4).
 
+## Quick start
+
+**You need:** your own dumped PAL disc of Final Fantasy Crystal Chronicles (`GCCP01`), extracted to a
+folder (it contains `dvd/`), and its `main.dol`. Tools: .NET 8 SDK (or a newer one with
+`DOTNET_ROLL_FORWARD=Major`), CMake, Ninja, LLVM-MinGW, Python 3, and on Windows a Windows SDK for the
+C++/WinRT headers. Nothing from the game is in this repository.
+
+**Build** (from the repository root):
+
+```
+git submodule update --init third_party/mgba
+dotnet build translator/Translator.sln -c Release
+copy <your main.dol> projects\ffcc\main.dol
+dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll translate-recursive 0x80003154 --project projects/ffcc/recomp.yml --threads 8 --output-metadata generated/base_translation_output.json --prune-stale
+dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll generate-data-init --project projects/ffcc/recomp.yml
+dotnet translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll emit-build-shards --project projects/ffcc/recomp.yml --out generated/build_shards
+python scripts/ffcc/build_libmgba.py --toolchain <llvm-mingw>/bin
+cmake -G Ninja -S runtime -B build-ffcc -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=<llvm-mingw>/bin/clang.exe -DCMAKE_CXX_COMPILER=<llvm-mingw>/bin/clang++.exe -DCMAKE_RC_COMPILER=<llvm-mingw>/bin/llvm-windres.exe -DMKW_CPPWINRT_INCLUDE_DIR="C:/Program Files (x86)/Windows Kits/10/Include/<version>/cppwinrt" -DCMAKE_CXX_FLAGS=-DRECOMP_PROJECT_FFCC=1
+cmake --build build-ffcc --target WiiCompiled --parallel 8
+```
+
+**Run:** create an empty `build-ffcc\portable.txt`, then put in `build-ffcc\UserData\Config.toml`:
+
+```toml
+[paths]
+dvd_root = "<folder that contains dvd/>"
+
+[gba]
+players = 2   # 1-4
+```
+
+Start `build-ffcc\WiiCompiled.exe`. Each port takes its gamepad in connection order; ports without
+one use the keyboard (defaults: port 1 WASD/X/Z/Space/Enter, port 3 WASD/J/K/U/I, port 4 arrows and
+numpad 1/2/3/0). Remap anything with **F10 > Controller settings**. In play, Select gives the handheld
+client control and B opens its menu; at a dungeon start every player confirms their command list.
+
+The full guide, environment variables and troubleshooting: [`docs/ffcc.md`](docs/ffcc.md).
+
 Everything below this line is the upstream WiiCompiled README (Mario Kart Wii), which this fork
 builds on and keeps intact; its build instructions, FAQ and licence apply here too.
 
