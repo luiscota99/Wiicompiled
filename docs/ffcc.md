@@ -20,7 +20,7 @@ to a real GBA.
 | --- | --- |
 | ![hub](media/ffcc_hub_menu.jpg) | ![combat](media/ffcc_combat.jpg) |
 
-Videos (from a two-player session): [character creation](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation.mp4), [dungeon start, client menus and combat](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus.mp4).
+Videos (from a two-player session): [character creation](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation.mp4), [dungeon start, client menus and combat](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus.mp4); GIF versions: [creation](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation_small.gif), [dungeon](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus_small.gif).
 
 ## Status
 

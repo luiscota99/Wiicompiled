@@ -12,6 +12,10 @@ players included, all remappable in the F10 settings bar). You need your own dum
 | ![creation](docs/media/ffcc_creation.jpg) | ![dungeon](docs/media/ffcc_dungeon_prompt.jpg) |
 | ![hub menu](docs/media/ffcc_hub_menu.jpg) | ![combat](docs/media/ffcc_combat.jpg) |
 
+![creation clip](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation_small.gif)
+
+![dungeon clip](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus_small.gif)
+
 Full videos: [character creation](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_creation.mp4) and
 [dungeon start, menus and combat](https://github.com/luiscota99/Wiicompiled/releases/download/ffcc-media-1/ffcc_dungeon_menus.mp4).
 
