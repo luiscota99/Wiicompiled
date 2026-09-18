@@ -174,7 +174,9 @@ handheld protocol only carries the GBA buttons.
 **In play.** A player's controls drive the game in the field and the client's screen when it is open.
 Select gives the client control; on the client, B opens its hub menu. At a dungeon start every player
 confirms their command list on the client to release the prompt. Pausing shows the client's PAUSE
-card, as on hardware.
+card, as on hardware. Dialogue choices addressed to a player by name ("BBB, how do you reply?") are
+answered only by that player's controller; the others cannot move the pointer. That is the original
+game's behaviour.
 
 ## How the handheld link works here
 
