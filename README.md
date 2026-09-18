@@ -71,6 +71,26 @@ original, and the runtime only supplies what the console hardware and SDK used t
 The fork is also a proof that WiiCompiled works for a GameCube title: everything game-specific sits in
 a project manifest and a per-game address header, so the same runtime can be pointed at another game.
 
+## How it was made
+
+- **The decompilation as the map, never as the code.** FFCC-Decomp told us what the game expects at
+  every step of the handheld protocol (which words, which states, which timeouts) and which game
+  functions to hook; no decompiled code is compiled into this port.
+- **The real client, not a re-implementation.** An early version drew the handheld screens by hand from
+  the protocol; it was replaced by the game's own client running in mGBA, so every screen and every
+  quirk is the original's.
+- **Record, replay, then fix.** Every link problem was solved the same way: record all words between
+  the game and the client, replay them into a fresh emulated client offline, confirm the replay
+  reproduces the failure word for word, then experiment there. The recorder and harness ship in
+  `scripts/ffcc/`.
+- **Measure before changing.** Frame rates, present cadence, emulation cost and input latency were
+  measured with temporary probes in the runtime before each change and the probes removed after.
+- **Hardware is the reference.** Where this runtime differs from the console (cooperative fibers
+  instead of preemptive threads, no real link cable), the fix restores what hardware would have done
+  rather than what is convenient.
+
+Contributions follow the same approach; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ## Disclosures
 
 - **AI assistance.** This port was developed with Anthropic's Claude (Claude Code). Every change was
