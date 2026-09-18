@@ -82,6 +82,21 @@ target_compile_definitions(mkw_runtime_common PRIVATE
 target_link_libraries(mkw_runtime_common PRIVATE
     aurora::gx aurora::pad aurora::si aurora::vi aurora::mtx)
 target_link_libraries(mkw_runtime_common PRIVATE mkw_platform mkw::pugixml mkw::toml11 mkw::cryptopp)
+# FFCC: embedded GBA clients through mGBA (third_party/mgba, built standalone as a static library in
+# third_party/mgba-standalone with LIBMGBA_ONLY/DISABLE_DEPS; see HANDOFF). Optional: without the
+# library the fake GBA in hle/ffcc/ffcc_gba.cpp stays in charge.
+set(MKW_MGBA_LIB "${MKW_RUNTIME_SOURCE_DIR}/../third_party/mgba-standalone/libmgba.a")
+if(EXISTS "${MKW_MGBA_LIB}")
+    # Exactly the definitions libmgba.a was compiled with (third_party/mgba-standalone/build.ninja):
+    # ENABLE_DIRECTORIES adds a field to struct mCore, so a mismatch reads core->init from the
+    # wrong offset (measured: jump to address 0 at GBAJoyBoot).
+    target_compile_definitions(mkw_runtime_common PRIVATE MKW_HAVE_MGBA=1 BUILD_STATIC ENABLE_DIRECTORIES ENABLE_VFS
+        ENABLE_VFS_FD HAVE_SETLOCALE HAVE_STRDUP HAVE_STRNDUP HAVE_VASPRINTF M_CORE_GBA _FILE_OFFSET_BITS=64 _GNU_SOURCE)
+    target_include_directories(mkw_runtime_common PRIVATE
+        "${MKW_RUNTIME_SOURCE_DIR}/../third_party/mgba/include"
+        "${MKW_RUNTIME_SOURCE_DIR}/../third_party/mgba-standalone/include")
+    message(STATUS "mGBA library found: ${MKW_MGBA_LIB}")
+endif()
 if(MKW_PLATFORM_WINDOWS)
     target_link_libraries(mkw_runtime_common PRIVATE shell32 windowsapp)
 elseif(MKW_PLATFORM_LINUX)
@@ -203,6 +218,12 @@ function(mkw_configure_product target)
 
     target_link_libraries(${target} PRIVATE
         aurora::gx aurora::pad aurora::si aurora::vi aurora::mtx)
+    if(EXISTS "${MKW_MGBA_LIB}")
+        target_link_libraries(${target} PRIVATE "${MKW_MGBA_LIB}")
+        if(MKW_PLATFORM_WINDOWS)
+            target_link_libraries(${target} PRIVATE ws2_32 shlwapi shell32 ole32 uuid)
+        endif()
+    endif()
     if(MKW_PLATFORM_MACOS)
         target_link_libraries(${target} PRIVATE
             "${MKW_IOKIT_FRAMEWORK}" "${MKW_COREFOUNDATION_FRAMEWORK}")

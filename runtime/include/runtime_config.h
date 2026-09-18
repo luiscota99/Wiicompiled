@@ -63,6 +63,7 @@ struct RuntimeUserConfig {
     // (Dolphin's "continuous scanning"), so a remote that dropped or was switched on
     // after launch shows up without restarting.
     std::optional<bool> wiiContinuousScan;
+    std::optional<uint32_t> gbaPlayers;   // [gba] players: how many ports run the emulated handheld client (1-4)
     // Accelerometer zero-point correction for the Bluetooth Wii Remote, in g and in
     // SDL's sensor frame (x right, y out of the button face, z towards the user).
     // SDL's Wii driver falls back to a nominal zero point when its read of the
@@ -481,6 +482,7 @@ inline RuntimeUserConfig ParseConfigDocument(const toml::value& document) {
         FindConfigValue<bool>(document, "audio", "attenuate_music_when_media_plays");
     config.wiiRemotes = FindConfigValue<bool>(document, "controller", "wii_remotes");
     config.wiiContinuousScan = FindConfigValue<bool>(document, "controller", "wii_continuous_scan");
+    config.gbaPlayers = FindConfigUint(document, "gba", "players");
     config.wiiAccelOffsetX = FindConfigValue<double>(document, "controller", "wii_accel_offset_x");
     config.wiiAccelOffsetY = FindConfigValue<double>(document, "controller", "wii_accel_offset_y");
     config.wiiAccelOffsetZ = FindConfigValue<double>(document, "controller", "wii_accel_offset_z");
@@ -847,6 +849,16 @@ inline bool WiiRemotesEnabled(bool fallback = true) {
 inline bool SetWiiRemotesEnabled(bool value) {
     Mutable().wiiRemotes = value;
     return WriteSetting("controller", "wii_remotes", value ? "true" : "false");
+}
+
+// FFCC: number of players on emulated handheld clients (ports 0..n-1). WIICOMPILED_FAKE_GBA overrides.
+inline uint32_t GbaPlayers(uint32_t fallback = 2) {
+    const uint32_t n = Get().gbaPlayers.value_or(fallback);
+    return n < 1 ? 1 : (n > 4 ? 4 : n);
+}
+inline bool SetGbaPlayers(uint32_t value) {
+    Mutable().gbaPlayers = value;
+    return WriteSetting("gba", "players", std::to_string(value));
 }
 
 // Whether to keep rescanning Bluetooth while no Wii controller is connected.

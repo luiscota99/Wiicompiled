@@ -12,6 +12,8 @@ extern "C" {
 #endif
 
 ImTextureID aurora_imgui_add_texture(uint32_t width, uint32_t height, const void* rgba8);
+// Rewrite a texture from aurora_imgui_add_texture with new RGBA8 pixels of the same size (per-frame use).
+bool aurora_imgui_update_texture(ImTextureID id, const void* rgba8);
 
 #ifdef __cplusplus
 }

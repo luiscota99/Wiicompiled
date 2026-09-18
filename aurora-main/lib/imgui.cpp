@@ -31,6 +31,9 @@ static bool g_frameDataBuilt = false;
 
 static std::vector<SDL_Texture*> g_sdlTextures;
 static std::vector<wgpu::Texture> g_wgpuTextures;
+// Textures a caller updates every frame (FFCC: emulated GBA screens drawn by the overlay).
+struct DynamicTexture { ImTextureID id; SDL_Texture* sdl; wgpu::Texture tex; uint32_t w, h; };
+static std::vector<DynamicTexture> g_dynamicTextures;
 
 void remove_legacy_ini_file(const char* basePath) noexcept {
   if (basePath == nullptr || *basePath == '\0') {
@@ -87,6 +90,7 @@ void shutdown() noexcept {
   }
   g_sdlTextures.clear();
   g_wgpuTextures.clear();
+  g_dynamicTextures.clear();
 }
 
 void process_event(const SDL_Event& event) noexcept {
@@ -206,6 +210,7 @@ ImTextureID add_texture(uint32_t width, uint32_t height, const uint8_t* data) no
     SDL_UpdateTexture(texture, nullptr, data, width * 4);
     SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
     g_sdlTextures.push_back(texture);
+    g_dynamicTextures.push_back({reinterpret_cast<ImTextureID>(texture), texture, {}, width, height});
     return reinterpret_cast<ImTextureID>(texture);
   }
   const wgpu::Extent3D size{
@@ -242,7 +247,21 @@ ImTextureID add_texture(uint32_t width, uint32_t height, const uint8_t* data) no
     webgpu::g_queue.WriteTexture(&dstView, data, width * height * 4, &dataLayout, &size);
   }
   g_wgpuTextures.push_back(texture);
-  return reinterpret_cast<ImTextureID>(textureView.MoveToCHandle());
+  const ImTextureID id = reinterpret_cast<ImTextureID>(textureView.MoveToCHandle());
+  g_dynamicTextures.push_back({id, nullptr, texture, width, height});
+  return id;
+}
+bool update_texture(ImTextureID id, const uint8_t* data) noexcept {
+  for (const DynamicTexture& d : g_dynamicTextures) {
+    if (d.id != id) continue;
+    if (d.sdl) { SDL_UpdateTexture(d.sdl, nullptr, data, d.w * 4); return true; }
+    const wgpu::Extent3D size{.width = d.w, .height = d.h, .depthOrArrayLayers = 1};
+    const wgpu::TexelCopyTextureInfo dstView{.texture = d.tex};
+    const wgpu::TexelCopyBufferLayout dataLayout{.bytesPerRow = 4 * d.w, .rowsPerImage = d.h};
+    webgpu::g_queue.WriteTexture(&dstView, data, size_t(d.w) * d.h * 4, &dataLayout, &size);
+    return true;
+  }
+  return false;
 }
 } // namespace aurora::imgui
 
@@ -250,5 +269,8 @@ ImTextureID add_texture(uint32_t width, uint32_t height, const uint8_t* data) no
 extern "C" {
 ImTextureID aurora_imgui_add_texture(uint32_t width, uint32_t height, const void* rgba8) {
   return aurora::imgui::add_texture(width, height, static_cast<const uint8_t*>(rgba8));
+}
+bool aurora_imgui_update_texture(ImTextureID id, const void* rgba8) {
+  return aurora::imgui::update_texture(id, static_cast<const uint8_t*>(rgba8));
 }
 }

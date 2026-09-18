@@ -711,11 +711,91 @@ static void apply_unblock_suppression(PADStatus& status, const u32 port, const b
   }
 }
 
+#if defined(RECOMP_PROJECT_FFCC)
+extern "C" bool FfccGbaPortHasController(uint32_t port);
+extern "C" bool FfccGbaClientShown(uint32_t port);
+extern "C" bool FfccGbaDirectInput();
+extern "C" uint32_t FfccConfigGbaPlayers();
+#endif
 u32 PADRead(PADStatus* status) {
   if (!g_keyboardBindingsLoaded) {
     g_keyboardBindingsLoaded = true;
     load_keyboard_bindings();
   }
+#if defined(RECOMP_PROJECT_FFCC)
+  // FFCC port: with no controller and no saved bindings, port 0 gets a default keyboard map
+  // (A=X B=Z X=C Y=V Start=Enter Z=Space L=Q R=E, D-pad WASD, main stick arrows, C-stick IJKL).
+  static bool s_ffccDefaultsApplied = false;
+  if (!s_ffccDefaultsApplied) {
+    s_ffccDefaultsApplied = true;
+    auto& kb = g_keyboardBindings[0];
+    if (!kb.m_mappingsSet) {
+      for (auto& b : kb.m_buttonMapping) {
+        switch (b.padButton) {
+          case PAD_BUTTON_A: b.scancode = SDL_SCANCODE_X; break;
+          case PAD_BUTTON_B: b.scancode = SDL_SCANCODE_Z; break;
+          case PAD_BUTTON_X: b.scancode = SDL_SCANCODE_C; break;
+          case PAD_BUTTON_Y: b.scancode = SDL_SCANCODE_V; break;
+          case PAD_BUTTON_START: b.scancode = SDL_SCANCODE_RETURN; break;
+          case PAD_TRIGGER_Z: b.scancode = SDL_SCANCODE_SPACE; break;
+          case PAD_TRIGGER_L: b.scancode = SDL_SCANCODE_Q; break;
+          case PAD_TRIGGER_R: b.scancode = SDL_SCANCODE_E; break;
+          case PAD_BUTTON_UP: b.scancode = SDL_SCANCODE_W; break;
+          case PAD_BUTTON_DOWN: b.scancode = SDL_SCANCODE_S; break;
+          case PAD_BUTTON_LEFT: b.scancode = SDL_SCANCODE_A; break;
+          case PAD_BUTTON_RIGHT: b.scancode = SDL_SCANCODE_D; break;
+          default: break;
+        }
+      }
+      for (auto& a : kb.m_axisMapping) {
+        switch (a.padAxis) {
+          case PAD_AXIS_LEFT_X_POS: a.scancode = SDL_SCANCODE_RIGHT; break;
+          case PAD_AXIS_LEFT_X_NEG: a.scancode = SDL_SCANCODE_LEFT; break;
+          case PAD_AXIS_LEFT_Y_POS: a.scancode = SDL_SCANCODE_UP; break;
+          case PAD_AXIS_LEFT_Y_NEG: a.scancode = SDL_SCANCODE_DOWN; break;
+          case PAD_AXIS_RIGHT_X_POS: a.scancode = SDL_SCANCODE_L; break;
+          case PAD_AXIS_RIGHT_X_NEG: a.scancode = SDL_SCANCODE_J; break;
+          case PAD_AXIS_RIGHT_Y_POS: a.scancode = SDL_SCANCODE_I; break;
+          case PAD_AXIS_RIGHT_Y_NEG: a.scancode = SDL_SCANCODE_K; break;
+          default: break;
+        }
+      }
+      kb.m_mappingsSet = true;
+    }
+    // Ports 3 and 4 (GBA players without a gamepad) get their own keyboard sets so one keyboard can
+    // drive two extra players: port 2 = WASD + J/K (A/B) U (Select) I (Start) Q/E (L/R);
+    // port 3 = arrows + numpad 1/2 (A/B) 3 (Select) 0 (Start) 7/9 (L/R).
+    struct KeySet { SDL_Scancode a, b, x, y, start, z, l, r, up, down, left, right; };
+    const KeySet sets[2] = {
+        {SDL_SCANCODE_J, SDL_SCANCODE_K, SDL_SCANCODE_N, SDL_SCANCODE_M, SDL_SCANCODE_I, SDL_SCANCODE_U, SDL_SCANCODE_Q, SDL_SCANCODE_E, SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_A, SDL_SCANCODE_D},
+        {SDL_SCANCODE_KP_1, SDL_SCANCODE_KP_2, SDL_SCANCODE_KP_4, SDL_SCANCODE_KP_5, SDL_SCANCODE_KP_0, SDL_SCANCODE_KP_3, SDL_SCANCODE_KP_7, SDL_SCANCODE_KP_9, SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT, SDL_SCANCODE_RIGHT},
+    };
+    for (int port = 2; port < 4; ++port) {
+      auto& k2 = g_keyboardBindings[port];
+      if (k2.m_mappingsSet) continue;
+      const KeySet& ks = sets[port - 2];
+      for (auto& b : k2.m_buttonMapping) {
+        switch (b.padButton) {
+          case PAD_BUTTON_A: b.scancode = ks.a; break;
+          case PAD_BUTTON_B: b.scancode = ks.b; break;
+          case PAD_BUTTON_X: b.scancode = ks.x; break;
+          case PAD_BUTTON_Y: b.scancode = ks.y; break;
+          case PAD_BUTTON_START: b.scancode = ks.start; break;
+          case PAD_TRIGGER_Z: b.scancode = ks.z; break;
+          case PAD_TRIGGER_L: b.scancode = ks.l; break;
+          case PAD_TRIGGER_R: b.scancode = ks.r; break;
+          case PAD_BUTTON_UP: b.scancode = ks.up; break;
+          case PAD_BUTTON_DOWN: b.scancode = ks.down; break;
+          case PAD_BUTTON_LEFT: b.scancode = ks.left; break;
+          case PAD_BUTTON_RIGHT: b.scancode = ks.right; break;
+          default: break;
+        }
+      }
+      for (auto& a : k2.m_axisMapping) a.scancode = SDL_SCANCODE_UNKNOWN;   // d-pad only; no stick keys
+      k2.m_mappingsSet = true;
+    }
+  }
+#endif
 
   int numKeys = 0;
   const bool* kbState = SDL_GetKeyboardState(&numKeys);
@@ -727,6 +807,22 @@ u32 PADRead(PADStatus* status) {
   for (uint32_t i = 0; i < PAD_CHANMAX; ++i) {
     memset(&status[i], 0, sizeof(PADStatus));
     auto controller = aurora::input::get_controller_for_player(i);
+#if defined(RECOMP_PROJECT_FFCC)
+    if (FfccGbaPortHasController(i)) {
+      // A GBA occupies the SI port: hardware PADRead reports NO_CONTROLLER there and the only
+      // input is the GBA key word (joybus.cpp SetPadData -> Pad merge, FFCC-Decomp pad.cpp:~195,
+      // which takes gba->button when the port is a GBA in control mode 0). Reading the pad here
+      // as well fed the same physical controller into the game twice, raw pad and GBA word on
+      // different frames, so the pause toggle (system.cpp:355-380, GetGbaButtonDown |
+      // GetButtonDown) fired twice per Start press and the game stuck on PAUSE (measured:
+      // scenegraph step mode 2, GbaQue pause mode 1, both ports in control mode 1).
+      status[i].err = PAD_ERR_NO_CONTROLLER;
+      g_suppressedButtons[i] = 0;
+      g_suppressLeftTrigger[i] = false;
+      g_suppressRightTrigger[i] = false;
+      continue;
+    }
+#endif
     if (controller == nullptr && !g_keyboardBindings[i].m_mappingsSet) {
       status[i].err = PAD_ERR_NO_CONTROLLER;
       g_suppressedButtons[i] = 0;
@@ -800,7 +896,16 @@ u32 PADRead(PADStatus* status) {
       status[i].triggerRight = static_cast<u8>(std::min(static_cast<int>(status[i].triggerRight) + tr, 255));
     }
 
+#if defined(RECOMP_PROJECT_FFCC) // controller reads alongside keyboard
+    // The FFCC port installs a default keyboard map on port 0 so the game is playable with no
+    // controller, which sets m_mappingsSet permanently. Upstream then treats a set keyboard map as
+    // "keyboard instead of pad" and skips the controller read entirely, so a connected pad was
+    // detected, assigned and mapped but never actually read. Status is zeroed each read and both
+    // sources only OR/accumulate into it, so reading both is additive and lets either one drive.
+    if (controller) {
+#else
     if (controller && !g_keyboardBindings[i].m_mappingsSet) {
+#endif
       EnsureMappingLoaded(controller);
 
       // Wii U Pro Controller raw D-pad fallback. SDL's HIDAPI Wii driver posts
@@ -1848,3 +1953,103 @@ PADControllerType PADGetControllerTypeForIndex(const u32 index) {
   }
   return static_cast<PADControllerType>(type);
 }
+
+#if defined(RECOMP_PROJECT_FFCC)
+// Fake-GBA providers for the FFCC runtime (runtime/src/hle/ffcc/ffcc_gba.cpp). A "GBA" exists on
+// port N when a gamepad is assigned to player N, or when WIICOMPILED_FAKE_GBA lists N (then it
+// mirrors player 0's gamepad, for testing multiplayer with a single pad). Buttons are returned in
+// the GBA KEYINPUT layout, active-high: A=1 B=2 Select=4 Start=8 Right=0x10 Left=0x20 Up=0x40
+// Down=0x80 R=0x100 L=0x200 (joybus.cpp SetPadData decodes exactly these bits).
+static bool ffcc_fake_gba_forced(uint32_t port) {
+  static int s_mask = -1;
+  if (s_mask < 0) {
+    s_mask = 0;
+    if (const char* env = std::getenv("WIICOMPILED_FAKE_GBA")) {
+      for (const char* c = env; *c != 0; ++c) {
+        if (*c >= '0' && *c <= '3') s_mask |= 1 << (*c - '0');
+      }
+    } else {
+      // Config.toml [gba] players = n -> ports 0..n-1 (default 2)
+      s_mask = (1 << FfccConfigGbaPlayers()) - 1;
+    }
+  }
+  return port < 4 && ((s_mask >> port) & 1) != 0;
+}
+static aurora::input::GameController* ffcc_gba_controller(uint32_t port) {
+  if (auto* c = aurora::input::get_controller_for_player(port)) return c;
+  if (ffcc_fake_gba_forced(port)) return aurora::input::get_controller_for_player(0);
+  return nullptr;
+}
+extern "C" bool FfccGbaPortHasController(uint32_t port) {
+  // Port 0 counts only when forced: FFCC multiplayer puts EVERY player on a GBA and refuses to
+  // start with a GameCube pad plugged in ("make sure no Controllers are connected").
+  if (port > 3) return false;
+  if (port == 0) return ffcc_fake_gba_forced(0);
+  return ffcc_fake_gba_forced(port) || aurora::input::get_controller_for_player(port) != nullptr;
+}
+// Keyboard fallback: the GBA port is hidden from PADRead, so port 0's default keyboard map
+// (installed in PADRead) is translated to GBA keys here instead. Same button meanings as the
+// gamepad path: A/B, Z = Select, Start, D-pad or main stick = D-pad, L/R.
+static uint16_t ffcc_gba_keys_from_keyboard(uint32_t port) {
+  if (port >= PAD_CHANMAX || !g_keyboardBindings[port].m_mappingsSet || SDL_GetKeyboardFocus() == nullptr) return 0;
+  int numKeys = 0;
+  const bool* kb = SDL_GetKeyboardState(&numKeys);
+  auto down = [&](auto sc) {
+    if (sc > PAD_KEY_INVALID && sc < numKeys && kb[sc]) return true;
+    return is_mouse_scancode(sc) && is_mouse_button_pressed(sc);
+  };
+  uint16_t pad = 0;
+  for (const auto& b : g_keyboardBindings[port].m_buttonMapping) if (down(b.scancode)) pad |= b.padButton;
+  int lx = 0, ly = 0;
+  for (const auto& a : g_keyboardBindings[port].m_axisMapping) {
+    if (!down(a.scancode)) continue;
+    switch (a.padAxis) {
+    case PAD_AXIS_LEFT_X_POS: ++lx; break;
+    case PAD_AXIS_LEFT_X_NEG: --lx; break;
+    case PAD_AXIS_LEFT_Y_POS: ++ly; break;
+    case PAD_AXIS_LEFT_Y_NEG: --ly; break;
+    default: break;
+    }
+  }
+  uint16_t k = 0;
+  if (pad & PAD_BUTTON_A) k |= 0x001;
+  if (pad & PAD_BUTTON_B) k |= 0x002;
+  if (pad & PAD_TRIGGER_Z) k |= 0x004;
+  if (pad & PAD_BUTTON_START) k |= 0x008;
+  if ((pad & PAD_BUTTON_RIGHT) || lx > 0) k |= 0x010;
+  if ((pad & PAD_BUTTON_LEFT) || lx < 0) k |= 0x020;
+  if ((pad & PAD_BUTTON_UP) || ly > 0) k |= 0x040;
+  if ((pad & PAD_BUTTON_DOWN) || ly < 0) k |= 0x080;
+  if (pad & PAD_TRIGGER_R) k |= 0x100;
+  if (pad & PAD_TRIGGER_L) k |= 0x200;
+  return k;
+}
+extern "C" uint16_t FfccGbaReadKeys(uint32_t port) {
+  // Own gamepad first; then the port's own keyboard set (ports 2 and 3 get one by default, so one
+  // keyboard drives two extra players); only then mirror player 0's gamepad or keyboard.
+  auto* c = aurora::input::get_controller_for_player(port);
+  if ((c == nullptr || c->m_controller == nullptr) && port != 0 && port < PAD_MAX_CONTROLLERS && g_keyboardBindings[port].m_mappingsSet)
+    return ffcc_gba_keys_from_keyboard(port);
+  if (c == nullptr || c->m_controller == nullptr) c = ffcc_gba_controller(port);
+  if (c == nullptr || c->m_controller == nullptr) {
+    return (port == 0 || ffcc_fake_gba_forced(port)) ? ffcc_gba_keys_from_keyboard(0) : 0;
+  }
+  SDL_Gamepad* g = c->m_controller;
+  uint16_t k = 0;
+  if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_SOUTH)) k |= 0x001;
+  if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_EAST)) k |= 0x002;
+  if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_BACK)) k |= 0x004;
+  if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_START)) k |= 0x008;
+  if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) k |= 0x010;
+  if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_LEFT)) k |= 0x020;
+  if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_UP)) k |= 0x040;
+  if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_DOWN)) k |= 0x080;
+  if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) k |= 0x100;
+  if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)) k |= 0x200;
+  const Sint16 lx = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTX);
+  const Sint16 ly = SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFTY);
+  if (lx > 12000) k |= 0x010; else if (lx < -12000) k |= 0x020;
+  if (ly < -12000) k |= 0x040; else if (ly > 12000) k |= 0x080;
+  return k;
+}
+#endif

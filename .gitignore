@@ -74,3 +74,8 @@ output.txt
 
 # Operating System
 .DS_Store
+
+# FFCC: translated output of the user's own DOL, the standalone mGBA build and link recordings
+/generated_*/
+/third_party/mgba-standalone/
+link_trace*.bin
