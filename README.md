@@ -57,6 +57,78 @@ client control and B opens its menu; at a dungeon start every player confirms th
 
 The full guide, environment variables and troubleshooting: [`docs/ffcc.md`](docs/ffcc.md).
 
+## Why this exists
+
+Crystal Chronicles' multiplayer was designed around one Game Boy Advance per player, linked to the
+GameCube with a cable: menus, the radar, the command list and the letters all live on the handheld
+while the TV shows the shared world. That hardware is the reason the mode is rarely played today, and
+emulators need one emulated handheld per player wired to the console. This port makes the whole setup
+one program on one PC: the game runs as native code produced by WiiCompiled's static recompiler, and
+each player's handheld is the game's own client program running in an embedded emulator, drawn on the
+same screen. Nothing is re-implemented by hand: the client is the original, the link protocol is the
+original, and the runtime only supplies what the console hardware and SDK used to.
+
+The fork is also a proof that WiiCompiled works for a GameCube title: everything game-specific sits in
+a project manifest and a per-game address header, so the same runtime can be pointed at another game.
+
+## Disclosures
+
+- **AI assistance.** This port was developed with Anthropic's Claude (Claude Code). Every change was
+  verified against the running game, the FFCC decompilation, or recorded link traces replayed into
+  the emulated client; nothing was accepted on the model's word alone. Commits carry a co-author
+  trailer and this notice.
+- **Game data.** None is included. You need your own dumped PAL disc; the translator reads your
+  `main.dol` (its SHA-256 is checked), the runtime reads your extracted disc, and the handheld client
+  program is uploaded by the game itself from that disc at run time. Do not ask where to get the game.
+- **Not affiliated** with Square Enix, Nintendo, or the authors of the projects credited below.
+  Final Fantasy Crystal Chronicles is a trademark of Square Enix; GameCube and Game Boy Advance are
+  trademarks of Nintendo.
+- **Licences.** This repository is GPL-3.0 like upstream WiiCompiled. mGBA (MPL-2.0) is a pinned
+  submodule built as a static library; the FFCC symbol map comes from FFCC-Decomp (CC0). Details in
+  [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+- **Region.** PAL (`GCCP01`) only. Other regions have different addresses and are untested.
+
+## Status and roadmap
+
+Working today: title, roster, character creation on the handheld or the console menu, towns, world
+map, dungeons, combat, saves; one to four players on emulated handhelds with all of the client's
+screens streamed by the game; two extra players on one keyboard by default.
+
+Known limits: the PAL game renders 25 frames per second (as on hardware) and the handheld screens
+follow it; pausing shows the client's PAUSE card as on hardware; some rendering issues remain.
+
+Planned, in order:
+
+1. Replace the emulated link layer with a native implementation behind the same game entry points,
+   removing the last scheduling differences from hardware (the recorder and replay harness in
+   `scripts/ffcc/` exist to verify it word for word).
+2. A presentation-time compositor so the handheld screens can refresh at 50 Hz independently of the
+   game's frame rate.
+3. Optional deviations from hardware: menus usable while paused.
+4. The remaining rendering issues, then a pull request to upstream WiiCompiled for the GameCube and
+   per-game infrastructure.
+
+Bug reports and pull requests are welcome; include the runtime log and, for link problems, a trace
+recorded with `WIICOMPILED_GBA_TRACE`.
+
+## Help wanted
+
+This is one person's port, built on other people's foundations, and there is plenty left that a
+second pair of hands would move faster than the first:
+
+- **Testing on other machines.** Different GPUs and drivers, different controllers, four real
+  gamepads, long sessions. A clean clone built from the quick start is the most useful report.
+- **Rendering.** A few scenes still draw wrong (lighting, world-map effects, one deformation). The
+  fastest way to fix them is a Dolphin reference capture of the same scene next to ours.
+- **The native link layer.** The plan above; the game's entry points, the protocol notes and the
+  replay harness are in the tree. Someone who enjoys protocol work could take this on.
+- **Other games, other regions.** The per-game address header and the project manifest are the
+  whole recipe for pointing the runtime at another GameCube title or another FFCC region.
+- **Documentation and setup.** Anything that made your first build harder than the quick start says.
+
+Open an issue with what you tried and the runtime log, or a pull request against `ffcc-port`. Small,
+verified changes are easier to take than large ones; say how you tested.
+
 Everything below this line is the upstream WiiCompiled README (Mario Kart Wii), which this fork
 builds on and keeps intact; its build instructions, FAQ and licence apply here too.
 
