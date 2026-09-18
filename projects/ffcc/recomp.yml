@@ -1,0 +1,49 @@
+schema_version: 1
+workspace_root: ../..
+
+project:
+  id: ffcc-gccp01
+  display_name: Final Fantasy Crystal Chronicles PAL
+  game_id: GCCP01
+  region: P
+
+memory:
+  base: 0x80000000
+  size: 0x01800000
+  sda_base: 0x803363C0
+  sda2_base: 0x80337600
+
+inputs:
+  dol:
+    path: projects/ffcc/main.dol
+    sha256: d86681a9af1cb177014934bb6d6f8cfe346a87804e892860500f06d957371507
+
+translation:
+  entry_points:
+    # Functions the recursive call-graph walk cannot reach because they are only ever called
+    # through a vtable or function pointer. Without a seed here nothing is emitted for the address
+    # and the game dies with missing_target the first time it gets there. All three below are also
+    # in native_registration_exclude: the exclusion stops a Mario Kart override claiming them, but
+    # on its own that leaves the address completely empty.
+    - "0x801BF64C"   # CRedDriver::SeFadeOut(int,int) - crashed after the family talk
+    - "0x801AB75C"   # TRKSuppAccessFile
+    - "0x801AF44C"   # gdev_cc_read
+  function_map:
+    path: projects/ffcc/MAP.txt
+  allow_unsupported_instructions: true
+
+runtime:
+  native_registration_root: runtime/src
+  # Mario Kart-keyed registrations that land on FFCC function starts (TRKSuppAccessFile,
+  # gdev_cc_read, CRedDriver::SeFadeOut); their C++ side is guarded by RECOMP_PROJECT_FFCC.
+  native_registration_exclude: [0x801AB75C, 0x801AF44C, 0x801BF64C]
+  native_abi_directories:
+    - runtime/src/hle/gx
+    - runtime/src/hle/ffcc
+
+output:
+  root: generated_ffcc
+  functions: functions
+  runtime_config: RuntimeConfig.h
+  data_initializer: data_sections_init.cpp
+  base_manifest: ../build/base/ffcc_base_manifest.json

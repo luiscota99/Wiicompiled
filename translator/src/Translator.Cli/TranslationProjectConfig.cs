@@ -104,7 +104,10 @@ internal sealed class TranslationProjectConfig
             .ToArray();
         var runtime = new ProjectRuntime(
             abiDirectories,
-            ResolvePath(workspaceRoot, dto.Runtime?.NativeRegistrationRoot ?? "runtime/src"));
+            ResolvePath(workspaceRoot, dto.Runtime?.NativeRegistrationRoot ?? "runtime/src"),
+            (dto.Runtime?.NativeRegistrationExclude ?? [])
+                .Select(value => Convert.ToUInt32(value.Trim().Replace("0x", "").Replace("0X", ""), 16))
+                .ToArray());
         var outputRoot = ResolvePath(workspaceRoot, dto.Output?.Root ?? "generated");
         var output = new ProjectOutput(
             outputRoot,
@@ -416,6 +419,7 @@ internal sealed class TranslationProjectConfig
     {
         public List<string>? NativeAbiDirectories { get; init; }
         public string? NativeRegistrationRoot { get; init; }
+        public List<string>? NativeRegistrationExclude { get; init; }
     }
 
     private sealed class OutputDto
@@ -475,7 +479,8 @@ internal sealed record ProjectTranslation(
     bool AllowUnsupportedInstructions);
 internal sealed record ProjectRuntime(
     IReadOnlyList<string> NativeAbiDirectories,
-    string NativeRegistrationRoot);
+    string NativeRegistrationRoot,
+    IReadOnlyList<uint> NativeRegistrationExclusions);
 internal sealed record ProjectOutput(
     string Root,
     string Functions,

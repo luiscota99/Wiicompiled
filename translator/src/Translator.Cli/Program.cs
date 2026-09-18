@@ -69,7 +69,21 @@ var canonicalIrStore = new CanonicalIrStore();
 var inferredGuestAbi = new Lazy<InferredGuestFunctionAbiProvider>(() =>
     new InferredGuestFunctionAbiProvider(image.Value, canonicalIrStore));
 var runtimeNativeIndex = new Lazy<RuntimeNativeIndex>(() =>
-    RuntimeNativeIndexBuilder.Build(RequireProject().Runtime.NativeRegistrationRoot));
+{
+    // runtime.native_registration_exclude: registrations keyed by another game's addresses that
+    // land on a real function of this project (their C++ side is guarded out per project).
+    var built = RuntimeNativeIndexBuilder.Build(RequireProject().Runtime.NativeRegistrationRoot);
+    var excluded = RequireProject().Runtime.NativeRegistrationExclusions.ToHashSet();
+    if (excluded.Count == 0)
+        return built;
+    Console.WriteLine($"[translator] native registration exclusions: {string.Join(", ", excluded.Select(a => $"0x{a:X8}"))}");
+    return built with
+    {
+        Registrations = built.Registrations.Where(r => !excluded.Contains(r.Address)).ToArray(),
+        VoidStubAbis = built.VoidStubAbis.Where(r => !excluded.Contains(r.Address)).ToArray(),
+        Effects = built.Effects.Where(r => !excluded.Contains(r.Address)).ToArray(),
+    };
+});
 // Void-stub signatures are only trusted as declared guest ABIs when the stub
 // lives under runtime.native_abi_directories (the vetted set); everywhere else
 // the C++ signature is documentation and the inferred ABI stays authoritative.
@@ -228,7 +242,26 @@ int RunEmitBuildShards(string[] argsTail)
     try
     {
         var nativeSourcePath = Path.GetFullPath(nativeSources);
-        var nativeIndex = RuntimeNativeIndexBuilder.Build(nativeSourcePath);
+        // native_registration_exclude must reach the shard emitter too. The index builder scans C++
+        // TEXT and cannot see preprocessor guards, so a Mario Kart registration that is compiled out
+        // for this project still reads as "natively overridden, drop the base translation". The
+        // exclude list is what corrects that -- but this command used to build a raw index here and
+        // never apply it, so an excluded address lost BOTH its native (correctly) and its translated
+        // body (wrongly) and the game died with missing_target on first call. Seen on FFCC at
+        // 0x801BF64C (CRedDriver::SeFadeOut, which sits under a Wii WPAD override).
+        var rawNativeIndex = RuntimeNativeIndexBuilder.Build(nativeSourcePath);
+        var nativeIndex = rawNativeIndex;
+        if (project is { } emitProject && emitProject.Runtime.NativeRegistrationExclusions.Count > 0)
+        {
+            var emitExcluded = emitProject.Runtime.NativeRegistrationExclusions.ToHashSet();
+            Console.WriteLine($"[translator] shard emitter honouring native registration exclusions: {string.Join(", ", emitExcluded.Select(a => $"0x{a:X8}"))}");
+            nativeIndex = rawNativeIndex with
+            {
+                Registrations = rawNativeIndex.Registrations.Where(r => !emitExcluded.Contains(r.Address)).ToArray(),
+                VoidStubAbis = rawNativeIndex.VoidStubAbis.Where(r => !emitExcluded.Contains(r.Address)).ToArray(),
+                Effects = rawNativeIndex.Effects.Where(r => !emitExcluded.Contains(r.Address)).ToArray(),
+            };
+        }
         var result = TranslatedBuildShardEmitter.Emit(new TranslatedBuildShardOptions(
             Path.GetFullPath(baseMetadata),
             Path.GetFullPath(baseFunctions),
@@ -556,6 +589,9 @@ int RunTranslateRecursive(string[] argsTail)
                     address => translated.Contains(address) || !visited.Add(address));
                 foreach (var address in candidates)
                 {
+                    // FFCC port: map entries that only HLE'd code calls (e.g. __GXSetDirtyState behind the
+                    // native GXBegin) still carry a native registration; honour it here as the walk does.
+                    if (residentTranslationExclusions.Contains(address)) { continue; }
                     // Nothing calls this from the translated set, so its entry
                     // GQR state is unconstrained.
                     gqrUnknownEntryRoots.Add(address);
@@ -597,7 +633,7 @@ int RunTranslateRecursive(string[] argsTail)
         void TranslateBatch(List<(uint Address, int Depth, string Name)> batch, bool speculative = false)
         {
             var results = new FunctionDiscoveryResult?[batch.Count];
-            IndexedParallel.For(batch.Count, parallelOptions, i => results[i] = Attempt(batch[i], speculative));
+            IndexedParallel.For(batch.Count, parallelOptions, i => { try { results[i] = Attempt(batch[i], speculative); } catch (Exception ex) { Console.Error.WriteLine($"[diag] failing function {batch[i].Name} @0x{batch[i].Address:X8} depth {batch[i].Depth}: {ex.Message}"); throw; } });
 
             // Re-run only translations that swallowed a newly revealed sibling entry, or direct
             // branches could bypass a mod overlay registered there. Both scans are pure per-result
@@ -731,8 +767,12 @@ int RunTranslateRecursive(string[] argsTail)
             foreach (var target in discoveryTargets)
             {
                 knownBaseFunctionEntryPoints.Add(target);
+                // FFCC port: never translate an address the runtime registers as native (excluded from base translation);
+                // the dispatcher routes calls there to the host implementation.
+                if (residentTranslationExclusions.Contains(target)) { visited.Add(target); continue; }
                 if (visited.Add(target))
                 {
+                    if (target < 0x80000000u) Console.Error.WriteLine($"[diag] {work.Name} @0x{work.Address:X8} enqueues out-of-image target 0x{target:X8}");
                     queue.Enqueue((target, work.Depth + 1));
                 }
             }

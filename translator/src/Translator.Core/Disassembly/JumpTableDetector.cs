@@ -383,22 +383,40 @@ internal static class JumpTableDetector
 
     private static bool TryFindUpperBound(IReadOnlyList<PpcInstruction> ordered, int startIndex, string register, out int upperBound)
     {
-        // Preferred: compare directly on the same register used for lwzx indexing.
+        // Preferred: compare directly on the register that feeds the lwzx index. The index register is
+        // usually a shifted copy of the compared register (slwi r0, r5, 2 / cmplwi r5, N), so follow
+        // such a copy to its source, and stop at any other redefinition of the tracked register: a
+        // compare found beyond a redefinition belongs to unrelated code (FFCC CFlatRuntime::objectFrame
+        // had an earlier cmpwi r0, 0 that produced a one-entry table).
+        var tracked = register;
         for (var i = startIndex - 1; i >= 0 && startIndex - i <= MaxBacktrackInstructions; i--)
         {
             var ins = ordered[i];
             if (ins.Operands.Count < 2 || ins.Operands[0] is not PpcRegisterOperand reg ||
-                !string.Equals(reg.Name, register, StringComparison.OrdinalIgnoreCase) ||
-                ins.Operands[1] is not PpcImmediateOperand imm)
+                !string.Equals(reg.Name, tracked, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
-
             if (ins.Mnemonic is "cmplwi" or "cmpwi")
             {
-                upperBound = imm.Value;
-                return true;
+                if (ins.Operands[1] is PpcImmediateOperand imm)
+                {
+                    upperBound = imm.Value;
+                    return true;
+                }
+                continue;
             }
+            if (ins.Mnemonic is "cmplw" or "cmpw" or "stw" or "sth" or "stb" or "stwx" or "sthx" or "stbx")
+            {
+                continue; // compares and stores do not define the register
+            }
+            if (ins.Mnemonic is "slwi" or "rlwinm" or "mr" or "extsb" or "extsh" or "clrlwi" &&
+                ins.Operands[1] is PpcRegisterOperand source)
+            {
+                tracked = source.Name; // follow the copy to the register the bound check reads
+                continue;
+            }
+            break; // any other definition: the compare must be found by the fallback below
         }
 
         // Fallback: some loops compare a logical counter (e.g. r18) distinct from the byte-offset
